@@ -1,0 +1,57 @@
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import pinoHttp from 'pino-http';
+import { env } from './config/env.js';
+import { logger } from './utils/logger.js';
+import { errorHandler, notFound } from './middleware/errors.js';
+import authRoutes from './routes/auth-routes.js';
+import dashboardRoutes from './routes/dashboard-routes.js';
+import employeeRoutes from './routes/employee-routes.js';
+import attendanceRoutes from './routes/attendance-routes.js';
+import biometricRoutes from './routes/biometric-routes.js';
+import leaveRoutes from './routes/leave-routes.js';
+import notificationRoutes from './routes/notification-routes.js';
+import passwordResetRoutes from './routes/password-reset-routes.js';
+import holidayRoutes from './routes/holiday-routes.js';
+import regularizationRoutes from './routes/regularization-routes.js';
+import announcementRoutes from './routes/announcement-routes.js';
+import userRoutes from './routes/user-routes.js';
+import { departmentRoutes, designationRoutes, officeRoutes, shiftRoutes } from './routes/configuration-routes.js';
+
+export const app = express();
+app.disable('x-powered-by');
+app.use(helmet({ contentSecurityPolicy: { directives: { ...helmet.contentSecurityPolicy.getDefaultDirectives(), 'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'], 'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'] } } }));
+app.use(cors({ origin(origin, callback) {
+  if (!origin || env.FRONTEND_ORIGINS.includes(origin)) return callback(null, true);
+  const expoDevelopmentOrigin = env.NODE_ENV === 'development'
+    && /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):8081$/.test(origin);
+  if (expoDevelopmentOrigin) return callback(null, true);
+  return callback(new Error('Origin is not allowed by CORS'));
+}, credentials: true }));
+app.use(express.json({ limit: '256kb' }));
+app.use(cookieParser());
+app.use(pinoHttp({ logger, customLogLevel(_req, res, error) { return error || res.statusCode >= 500 ? 'error' : 'info'; } }));
+app.use('/api', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
+
+app.get('/health', (_req, res) => res.json({ success: true, message: 'VAM HRMS API is running', data: { status: 'ok' } }));
+app.use('/api/auth', authRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/employees', employeeRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/biometrics', biometricRoutes);
+app.use('/api/leaves', leaveRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/password-resets', passwordResetRoutes);
+app.use('/api/holidays', holidayRoutes);
+app.use('/api/regularizations', regularizationRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/offices', officeRoutes);
+app.use('/api/shifts', shiftRoutes);
+app.use('/api/departments', departmentRoutes);
+app.use('/api/designations', designationRoutes);
+app.use(notFound);
+app.use(errorHandler);
