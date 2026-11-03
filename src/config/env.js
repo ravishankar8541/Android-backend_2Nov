@@ -17,6 +17,7 @@ const schema = z.object({
   SEED_ADMIN_PASSWORD: z.string().min(12).optional(),
   BIOMETRIC_PROVIDER: z.enum(['disabled', 'local']).default('local'),
   BIOMETRIC_ENCRYPTION_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().regex(/^[a-fA-F0-9]{64}$/).optional()),
+  CLOUDINARY_URL: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
   BIOMETRIC_FACE_DISTANCE_THRESHOLD: z.coerce.number().positive().max(2).default(1.1),
   BIOMETRIC_LIVENESS_MAX_SCORE: z.coerce.number().min(0).max(1).default(0.2),
 });

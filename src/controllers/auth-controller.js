@@ -151,6 +151,7 @@ export async function getCurrentUser(req, res) {
       department: user.employee.department,
       designation: user.employee.designation,
       phone: user.employee.phone,
+      photoUrl: user.employee.photoUrl,
       joiningDate: user.employee.joiningDate,
       employmentStatus: user.employee.employmentStatus,
       faceEnrollmentStatus: user.employee.faceEnrollmentStatus,

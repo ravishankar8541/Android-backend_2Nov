@@ -24,6 +24,8 @@ const employeeSchema = new mongoose.Schema({
   phone: { type: String, trim: true, default: '' },
   department: { type: String, trim: true, default: 'Unassigned', index: true },
   designation: { type: String, trim: true, default: '' },
+  photoUrl: { type: String, default: null, maxlength: 700 },
+  photoPublicId: { type: String, default: null, maxlength: 200 },
   manager: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
   office: { type: mongoose.Schema.Types.ObjectId, ref: 'Office', default: null },
   shift: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift', default: null },
