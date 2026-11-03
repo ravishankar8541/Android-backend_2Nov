@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Attendance } from '../models/Attendance.js';
 import { Employee } from '../models/Employee.js';
+import { Office } from '../models/Office.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { HttpError } from '../utils/http-error.js';
 import { dateKeyInTimeZone, shiftDateKey } from '../utils/date.js';
@@ -8,6 +9,7 @@ import { env } from '../config/env.js';
 import { ROLES } from '../constants/roles.js';
 import { markAttendance } from '../services/attendance-service.js';
 import { assertAlternatingAttendanceEvent, calculateNetWorkingMinutes } from '../services/attendance-rules.js';
+import { applyAttendanceEdit } from '../services/attendance-edit.js';
 
 export const attendanceEventSchema = z.object({
   verificationSessionId: z.string().min(1),
@@ -135,4 +137,66 @@ export async function correctAttendance(req, res) {
   await attendance.save();
   await AuditLog.create({ actor: req.auth.userId, action: 'attendance.corrected', entityType: 'Attendance', entityId: attendance.id, reason: req.body.reason, ipAddress: req.ip });
   res.json({ success: true, message: 'Attendance corrected', data: { attendance } });
+}
+
+const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
+const ATTENDANCE_STATUSES = ['present', 'late', 'half_day', 'absent', 'early_leave', 'overtime', 'manual_review'];
+
+export const attendanceEditSchema = z.object({
+  dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the YYYY-MM-DD date format'),
+  employee: objectIdSchema.optional(),
+  office: objectIdSchema.optional(),
+  status: z.enum(ATTENDANCE_STATUSES).optional(),
+  netWorkingMinutes: z.number().int().min(0).max(1440).optional(),
+  events: z.array(z.object({
+    _id: objectIdSchema.optional(),
+    type: z.enum(['IN', 'OUT']),
+    occurredAt: z.coerce.date(),
+    method: z.enum(['face_liveness', 'manual']),
+    faceMatched: z.boolean().default(false),
+    livenessPassed: z.boolean().default(false),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    accuracyMeters: z.number().min(0).max(10000),
+    distanceMeters: z.number().min(0).max(100000),
+    deviceId: z.string().trim().max(120).optional(),
+  })).max(20).optional(),
+  reason: z.string().trim().min(8).max(1000),
+});
+
+export const attendanceIdSchema = z.object({ id: objectIdSchema });
+
+export async function editAttendance(req, res) {
+  const attendance = await Attendance.findById(req.validatedParams?.id ?? req.params.id);
+  if (!attendance) throw new HttpError(404, 'Attendance record not found', 'ATTENDANCE_NOT_FOUND');
+  const targetEmployeeId = req.body.employee ?? attendance.employee;
+  const employee = await Employee.findById(targetEmployeeId).populate('shift');
+  if (!employee) throw new HttpError(422, 'That employee does not exist', 'EMPLOYEE_NOT_FOUND');
+  if (req.body.office && !(await Office.exists({ _id: req.body.office }))) throw new HttpError(422, 'That office does not exist', 'OFFICE_NOT_FOUND');
+
+  const { changes, events } = applyAttendanceEdit({
+    attendance,
+    employee,
+    payload: req.body,
+    actorId: req.auth.userId,
+    reason: req.body.reason,
+  });
+
+  try {
+    await attendance.save();
+  } catch (error) {
+    if (error?.code === 11000) throw new HttpError(409, 'Attendance already exists for that employee on that date', 'ATTENDANCE_DUPLICATE');
+    if (error?.name === 'VersionError') throw new HttpError(409, 'This attendance record changed while you were editing it. Reload it and try again.', 'ATTENDANCE_CONFLICT');
+    throw error;
+  }
+  await AuditLog.create({
+    actor: req.auth.userId,
+    action: 'attendance.edited',
+    entityType: 'Attendance',
+    entityId: attendance.id,
+    reason: req.body.reason,
+    metadata: { changes, events },
+    ipAddress: req.ip,
+  });
+  res.json({ success: true, message: 'Attendance updated', data: { attendance } });
 }

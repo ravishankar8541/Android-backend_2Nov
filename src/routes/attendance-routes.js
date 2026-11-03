@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { checkIn, checkOut, correctAttendance, getToday, listAttendance, listMyAttendance, attendanceEventSchema, correctionSchema } from '../controllers/attendance-controller.js';
+import { checkIn, checkOut, correctAttendance, editAttendance, getToday, listAttendance, listMyAttendance, attendanceEditSchema, attendanceEventSchema, attendanceIdSchema, correctionSchema } from '../controllers/attendance-controller.js';
 import { allowRoles, requireAuth } from '../middleware/auth.js';
 import { ADMIN_ROLES, MANAGER_ROLES, ROLES } from '../constants/roles.js';
 import { validate } from '../middleware/validate.js';
@@ -20,5 +20,6 @@ router.get('/today', allowRoles(ROLES.EMPLOYEE, ROLES.MANAGER), asyncHandler(get
 router.get('/my', allowRoles(ROLES.EMPLOYEE, ROLES.MANAGER), asyncHandler(listMyAttendance));
 router.get('/', allowRoles(...MANAGER_ROLES), validate(filtersSchema, 'query'), asyncHandler(listAttendance));
 router.patch('/:id/correction', allowRoles(...ADMIN_ROLES), validate(correctionSchema), asyncHandler(correctAttendance));
+router.patch('/:id', allowRoles(...ADMIN_ROLES), validate(attendanceIdSchema, 'params'), validate(attendanceEditSchema), asyncHandler(editAttendance));
 
 export default router;
