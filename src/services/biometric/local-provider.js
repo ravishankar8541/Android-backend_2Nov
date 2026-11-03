@@ -5,6 +5,7 @@ import { FaceTemplate } from '../../models/FaceTemplate.js';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../utils/http-error.js';
 import { decryptFaceTemplate, embeddingDistance, encryptFaceTemplate } from './template-crypto.js';
+import { uploadAttendanceSelfie } from '../cloudinary.js';
 
 function requireLocalProvider() {
   if (env.BIOMETRIC_PROVIDER !== 'local') {
@@ -21,10 +22,18 @@ export async function getMyFaceEnrollment(employeeId) {
   requireEmployeeId(employeeId);
   const [template, employee] = await Promise.all([
     FaceTemplate.findOne({ employee: employeeId }).select('enrolledAt'),
-    Employee.findById(employeeId).select('faceEnrollmentStatus'),
+    Employee.findById(employeeId).select('faceEnrollmentStatus attendanceVerification'),
   ]);
   const disabled = employee?.faceEnrollmentStatus === 'disabled';
-  return { enrolled: Boolean(template) && !disabled, disabled, providerAvailable: env.BIOMETRIC_PROVIDER === 'local', enrolledAt: template && !disabled ? template.enrolledAt : null };
+  const verification = employee?.attendanceVerification ?? 'face';
+  return {
+    enrolled: Boolean(template) && !disabled,
+    disabled,
+    verification,
+    selfieAvailable: Boolean(env.CLOUDINARY_URL),
+    providerAvailable: env.BIOMETRIC_PROVIDER === 'local',
+    enrolledAt: template && !disabled ? template.enrolledAt : null,
+  };
 }
 
 export async function saveMyFaceEnrollment(employeeId, embedding, consent) {
@@ -87,6 +96,53 @@ export async function createLocalVerification({ employeeId, eventType, embedding
   return { verificationSessionId: session.id, expiresAt: session.expiresAt };
 }
 
+/**
+ * iPhone, iPad and browser builds cannot load the Android face model, so HR can switch a profile
+ * to a captured selfie instead. The same single-use session record backs both paths, which keeps
+ * replay protection identical; the photo itself is the evidence an admin reviews.
+ */
+export async function createSelfieVerification({ employeeId, eventType, buffer }) {
+  requireEmployeeId(employeeId);
+  if (eventType !== 'IN' && eventType !== 'OUT') throw new HttpError(400, 'Invalid attendance event type', 'INVALID_EVENT_TYPE');
+  const employee = await Employee.findById(employeeId);
+  if (!employee || employee.employmentStatus !== 'active') throw new HttpError(403, 'Your employee profile is inactive', 'EMPLOYEE_INACTIVE');
+  if (employee.attendanceVerification !== 'selfie') {
+    throw new HttpError(403, 'This profile verifies attendance with a face match on the Android app. Ask HR to switch it to photo check-in.', 'ATTENDANCE_VERIFICATION_MISMATCH');
+  }
+  const photo = await uploadAttendanceSelfie(buffer);
+  const session = await BiometricSession.create({
+    _id: crypto.randomUUID(),
+    employee: employeeId,
+    eventType,
+    method: 'selfie',
+    photoUrl: photo.url,
+    photoPublicId: photo.publicId,
+    expiresAt: new Date(Date.now() + 2 * 60 * 1000),
+  });
+  return { verificationSessionId: session.id, expiresAt: session.expiresAt, photoUrl: photo.url };
+}
+
+export async function isSelfieSession(sessionId) {
+  if (!sessionId) return false;
+  const session = await BiometricSession.findOne({ _id: sessionId });
+  return session?.method === 'selfie';
+}
+
+export async function verifySelfieSession({ sessionId, employeeId, eventType }) {
+  if (!sessionId || !employeeId) throw new HttpError(400, 'A verified attendance session is required', 'FACE_SESSION_REQUIRED');
+  const session = await BiometricSession.findOne({
+    _id: sessionId,
+    employee: employeeId,
+    eventType,
+    method: 'selfie',
+    usedAt: null,
+    expiresAt: { $gt: new Date() },
+  });
+  if (!session) throw new HttpError(403, 'Verification expired or was already used. Try again.', 'FACE_SESSION_INVALID');
+  if (!session.photoUrl) throw new HttpError(403, 'The photo was not stored. Capture it again.', 'FACE_SESSION_INVALID');
+  return { session, selfie: true, photoUrl: session.photoUrl, photoPublicId: session.photoPublicId, reference: `selfie:${session.id}` };
+}
+
 export async function verifyAttendanceSession({ sessionId, employeeId, eventType }) {
   requireLocalProvider();
   if (!sessionId || !employeeId) throw new HttpError(400, 'A verified face session is required', 'FACE_SESSION_REQUIRED');
@@ -103,6 +159,7 @@ export async function verifyAttendanceSession({ sessionId, employeeId, eventType
   }
   return {
     session,
+    selfie: false,
     faceMatched: Number.isFinite(session.faceDistance) && session.faceDistance >= 0 && session.faceDistance <= env.BIOMETRIC_FACE_DISTANCE_THRESHOLD,
     livenessPassed: Number.isFinite(session.livenessScore) && session.livenessScore >= 0 && session.livenessScore <= env.BIOMETRIC_LIVENESS_MAX_SCORE,
     reference: `local:${session.id}`,
@@ -115,7 +172,7 @@ export async function consumeAttendanceSession(session) {
     { _id: session.id, usedAt: null, expiresAt: { $gt: new Date() } },
     { $set: { usedAt: claimedAt } },
   );
-  if (result.modifiedCount !== 1) throw new HttpError(409, 'Face verification was already used. Verify again.', 'FACE_SESSION_ALREADY_USED');
+  if (result.modifiedCount !== 1) throw new HttpError(409, 'Verification was already used. Try again.', 'FACE_SESSION_ALREADY_USED');
   return claimedAt;
 }
 

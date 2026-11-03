@@ -4,7 +4,8 @@ import { allowRoles, requireAuth } from '../middleware/auth.js';
 import { ROLES } from '../constants/roles.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/async-handler.js';
-import { deleteEnrollment, enrollFace, getEnrollment, verifyFace } from '../controllers/biometric-controller.js';
+import { deleteEnrollment, enrollFace, getEnrollment, verifyFace, verifySelfie } from '../controllers/biometric-controller.js';
+import { employeePhotoUpload } from '../middleware/employee-photo-upload.js';
 
 const router = Router();
 const embeddingSchema = z.array(z.number().finite().min(-1.1).max(1.1)).length(192).refine((embedding) => {
@@ -18,11 +19,13 @@ const verifySchema = z.object({
   livenessPassed: z.literal(true),
   livenessScore: z.number().finite().min(0).max(1),
 });
+const selfieSchema = z.object({ eventType: z.enum(['IN', 'OUT']) });
 
 router.use(requireAuth, allowRoles(ROLES.EMPLOYEE, ROLES.MANAGER));
 router.get('/me', asyncHandler(getEnrollment));
 router.post('/enroll', validate(enrollSchema), asyncHandler(enrollFace));
 router.delete('/me', asyncHandler(deleteEnrollment));
 router.post('/verify', validate(verifySchema), asyncHandler(verifyFace));
+router.post('/selfie', employeePhotoUpload, validate(selfieSchema), asyncHandler(verifySelfie));
 
 export default router;

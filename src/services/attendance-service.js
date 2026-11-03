@@ -17,13 +17,13 @@ export async function markAttendance({ auth, body, type }) {
   if (!auth.employeeId) throw new HttpError(403, 'This account is not linked to an employee profile', 'EMPLOYEE_PROFILE_REQUIRED');
   const employee = await Employee.findById(auth.employeeId).populate('office').populate('shift');
   if (!employee || employee.employmentStatus !== 'active') throw new HttpError(403, 'Your employee profile is inactive', 'EMPLOYEE_INACTIVE');
-  if (employee.faceEnrollmentStatus === 'disabled') throw new HttpError(403, 'Face attendance is disabled for this employee. Contact HR.', 'FACE_ENROLLMENT_DISABLED');
+  if (employee.attendanceVerification !== 'selfie' && employee.faceEnrollmentStatus === 'disabled') throw new HttpError(403, 'Face attendance is disabled for this employee. Contact HR.', 'FACE_ENROLLMENT_DISABLED');
   if (!employee.office?.active) throw new HttpError(409, 'No active office is assigned to your profile', 'OFFICE_NOT_ASSIGNED');
   if (!employee.shift?.active) throw new HttpError(409, 'No active shift is assigned to your profile', 'SHIFT_NOT_ASSIGNED');
 
   const recordedProofQuery = {
     employee: employee.id,
-    events: { $elemMatch: { type, 'verification.providerReference': `local:${body.verificationSessionId}` } },
+    events: { $elemMatch: { type, 'verification.providerReference': { $in: [`local:${body.verificationSessionId}`, `selfie:${body.verificationSessionId}`] } } },
   };
   // A retry after a lost response returns the saved event instead of duplicating it.
   const recorded = await Attendance.findOne(recordedProofQuery);
@@ -31,7 +31,7 @@ export async function markAttendance({ auth, body, type }) {
 
   // The server recomputes face matching; passive liveness comes from the client SDK.
   const biometric = await verifyAttendanceSession({ sessionId: body.verificationSessionId, employeeId: employee.id, eventType: type });
-  if (!biometric.livenessPassed || !biometric.faceMatched) throw new HttpError(403, 'Face verification failed', 'FACE_VERIFICATION_FAILED');
+  if (!biometric.selfie && (!biometric.livenessPassed || !biometric.faceMatched)) throw new HttpError(403, 'Face verification failed', 'FACE_VERIFICATION_FAILED');
 
   const location = { latitude: body.latitude, longitude: body.longitude, accuracyMeters: body.accuracyMeters };
   const distanceMeters = assertInsideOffice(location, employee.office);
@@ -71,8 +71,10 @@ export async function markAttendance({ auth, body, type }) {
   attendance.events.push({
     type,
     occurredAt,
-    method: 'face_liveness',
-    verification: { faceMatched: true, livenessPassed: true, providerReference: biometric.reference },
+    method: biometric.selfie ? 'selfie_photo' : 'face_liveness',
+    verification: biometric.selfie
+      ? { faceMatched: false, livenessPassed: false, providerReference: biometric.reference, photoUrl: biometric.photoUrl, photoPublicId: biometric.photoPublicId }
+      : { faceMatched: true, livenessPassed: true, providerReference: biometric.reference },
     location: { ...location, distanceMeters },
     deviceId: body.deviceId || null,
   });

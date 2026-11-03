@@ -152,7 +152,7 @@ export const attendanceEditSchema = z.object({
     _id: objectIdSchema.optional(),
     type: z.enum(['IN', 'OUT']),
     occurredAt: z.coerce.date(),
-    method: z.enum(['face_liveness', 'manual']),
+    method: z.enum(['face_liveness', 'selfie_photo', 'manual']),
     faceMatched: z.boolean().default(false),
     livenessPassed: z.boolean().default(false),
     latitude: z.number().min(-90).max(90),

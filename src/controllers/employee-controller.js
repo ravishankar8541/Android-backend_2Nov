@@ -77,7 +77,7 @@ export async function updateEmployee(req, res) {
   const employee = await Employee.findById(req.params.id);
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
   const previousPhotoPublicId = employee.photoPublicId;
-  const allowed = ['firstName', 'lastName', 'phone', 'department', 'designation', 'joiningDate', 'photoUrl', 'photoPublicId', 'manager', 'office', 'shift', 'employmentStatus', 'faceEnrollmentStatus'];
+  const allowed = ['firstName', 'lastName', 'phone', 'department', 'designation', 'joiningDate', 'photoUrl', 'photoPublicId', 'manager', 'office', 'shift', 'employmentStatus', 'faceEnrollmentStatus', 'attendanceVerification'];
   for (const key of allowed) if (req.body[key] !== undefined) employee[key] = req.body[key];
   if (req.body.salary) {
     const current = typeof employee.salary?.toObject === 'function' ? employee.salary.toObject() : (employee.salary ?? {});

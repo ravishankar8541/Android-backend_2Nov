@@ -32,6 +32,7 @@ const employeeSchema = new mongoose.Schema({
   joiningDate: { type: Date, default: Date.now },
   employmentStatus: { type: String, enum: ['active', 'inactive'], default: 'active', index: true },
   faceEnrollmentStatus: { type: String, enum: ['not_enrolled', 'pending', 'enrolled', 'disabled'], default: 'not_enrolled' },
+  attendanceVerification: { type: String, enum: ['face', 'selfie'], default: 'face' },
 }, { timestamps: true });
 
 employeeSchema.index({ department: 1, employmentStatus: 1 });

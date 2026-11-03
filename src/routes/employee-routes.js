@@ -41,6 +41,7 @@ const createSchema = z.object({
   shift: z.string().optional(),
   salary: salarySchema.optional(),
   role: z.enum(['employee', 'manager']).default('employee'),
+  attendanceVerification: z.enum(['face', 'selfie']).optional(),
   temporaryPassword: z.string().min(5).max(200),
 });
 const updateSchema = z.object({
@@ -58,6 +59,7 @@ const updateSchema = z.object({
   salary: salarySchema.optional(),
   employmentStatus: z.enum(['active', 'inactive']).optional(),
   faceEnrollmentStatus: z.enum(['not_enrolled', 'pending', 'enrolled', 'disabled']).optional(),
+  attendanceVerification: z.enum(['face', 'selfie']).optional(),
 }).refine((body) => Object.keys(body).length > 0, 'Provide at least one field to update');
 const resetPasswordSchema = z.object({ temporaryPassword: z.string().min(5).max(200) });
 

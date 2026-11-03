@@ -3,11 +3,13 @@ import mongoose from 'mongoose';
 const attendanceEventSchema = new mongoose.Schema({
   type: { type: String, enum: ['IN', 'OUT'], required: true },
   occurredAt: { type: Date, required: true },
-  method: { type: String, enum: ['face_liveness', 'manual'], required: true },
+  method: { type: String, enum: ['face_liveness', 'selfie_photo', 'manual'], required: true },
   verification: {
     faceMatched: { type: Boolean, required: true },
     livenessPassed: { type: Boolean, required: true },
     providerReference: { type: String, select: false },
+    photoUrl: { type: String, default: null, maxlength: 700 },
+    photoPublicId: { type: String, default: null, select: false, maxlength: 200 },
   },
   location: {
     latitude: { type: Number, required: true },
@@ -18,7 +20,7 @@ const attendanceEventSchema = new mongoose.Schema({
   deviceId: { type: String, default: null },
   correctedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   correctionReason: { type: String, default: null },
-}, { _id: true, toJSON: { transform(_doc, ret) { if (ret.verification) delete ret.verification.providerReference; return ret; } } });
+}, { _id: true, toJSON: { transform(_doc, ret) { if (ret.verification) { delete ret.verification.providerReference; delete ret.verification.photoPublicId; } return ret; } } });
 
 const attendanceSchema = new mongoose.Schema({
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true, index: true },

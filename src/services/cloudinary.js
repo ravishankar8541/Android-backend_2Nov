@@ -5,7 +5,9 @@ import { HttpError } from '../utils/http-error.js';
 const { v2: cloudinary } = cloudinaryPackage;
 
 export const EMPLOYEE_PHOTO_FOLDER = 'vam/employees';
+export const ATTENDANCE_SELFIE_FOLDER = 'vam/attendance';
 const AVATAR_SIZE = 512;
+const SELFIE_WIDTH = 900;
 
 function client() {
   if (!env.CLOUDINARY_URL) {
@@ -31,6 +33,23 @@ export function uploadEmployeePhoto(buffer) {
       else resolve({ url: result.secure_url, publicId: result.public_id });
     });
     stream.on('error', () => reject(new HttpError(502, 'The photo could not be stored. Try again.', 'EMPLOYEE_PHOTO_UPLOAD_FAILED')));
+    stream.end(buffer);
+  });
+}
+
+/** Attendance evidence is stored as framed by the employee, so only the width is capped. */
+export function uploadAttendanceSelfie(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = client().uploader.upload_stream({
+      folder: ATTENDANCE_SELFIE_FOLDER,
+      resource_type: 'image',
+      format: 'jpg',
+      transformation: [{ width: SELFIE_WIDTH, crop: 'limit' }, { quality: 'auto:good' }],
+    }, (error, result) => {
+      if (error) reject(new HttpError(502, 'The photo could not be stored. Try again.', 'ATTENDANCE_SELFIE_UPLOAD_FAILED'));
+      else resolve({ url: result.secure_url, publicId: result.public_id });
+    });
+    stream.on('error', () => reject(new HttpError(502, 'The photo could not be stored. Try again.', 'ATTENDANCE_SELFIE_UPLOAD_FAILED')));
     stream.end(buffer);
   });
 }
