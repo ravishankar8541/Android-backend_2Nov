@@ -18,6 +18,7 @@ import passwordResetRoutes from './routes/password-reset-routes.js';
 import holidayRoutes from './routes/holiday-routes.js';
 import regularizationRoutes from './routes/regularization-routes.js';
 import announcementRoutes from './routes/announcement-routes.js';
+import payslipRoutes from './routes/payslip-routes.js';
 import userRoutes from './routes/user-routes.js';
 import { departmentRoutes, designationRoutes, officeRoutes, shiftRoutes } from './routes/configuration-routes.js';
 
@@ -30,7 +31,7 @@ app.use(cors({ origin(origin, callback) {
     && /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):8081$/.test(origin);
   if (expoDevelopmentOrigin) return callback(null, true);
   return callback(new Error('Origin is not allowed by CORS'));
-}, credentials: true }));
+}, credentials: true, exposedHeaders: ['Content-Disposition'] }));
 app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser());
 app.use(pinoHttp({ logger, customLogLevel(_req, res, error) { return error || res.statusCode >= 500 ? 'error' : 'info'; } }));
@@ -48,6 +49,7 @@ app.use('/api/password-resets', passwordResetRoutes);
 app.use('/api/holidays', holidayRoutes);
 app.use('/api/regularizations', regularizationRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/payslips', payslipRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/offices', officeRoutes);
 app.use('/api/shifts', shiftRoutes);

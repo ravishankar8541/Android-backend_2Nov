@@ -7,6 +7,21 @@ import { validate } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
+const monthlyAmount = z.number().min(0).max(10000000);
+const salarySchema = z.object({
+  currency: z.string().trim().toUpperCase().length(3).optional(),
+  basic: monthlyAmount.optional(),
+  hra: monthlyAmount.optional(),
+  specialAllowance: monthlyAmount.optional(),
+  bonus: monthlyAmount.optional(),
+  pfPercentage: z.number().min(0).max(100).optional(),
+  tds: monthlyAmount.optional(),
+  otherDeductions: monthlyAmount.optional(),
+  pan: z.string().trim().max(10).optional(),
+  aadhaar: z.string().trim().max(12).optional(),
+  bankAccount: z.string().trim().max(34).optional(),
+  ifsc: z.string().trim().max(11).optional(),
+}).refine((value) => Object.keys(value).length > 0, 'Provide at least one salary field');
 const createSchema = z.object({
   employeeId: z.string().trim().min(2).max(30),
   firstName: z.string().trim().min(1).max(80),
@@ -18,6 +33,7 @@ const createSchema = z.object({
   manager: z.string().optional(),
   office: z.string().optional(),
   shift: z.string().optional(),
+  salary: salarySchema.optional(),
   role: z.enum(['employee', 'manager']).default('employee'),
   temporaryPassword: z.string().min(5).max(200),
 });
@@ -30,6 +46,7 @@ const updateSchema = z.object({
   manager: z.string().nullable().optional(),
   office: z.string().nullable().optional(),
   shift: z.string().nullable().optional(),
+  salary: salarySchema.optional(),
   employmentStatus: z.enum(['active', 'inactive']).optional(),
   faceEnrollmentStatus: z.enum(['not_enrolled', 'pending', 'enrolled', 'disabled']).optional(),
 }).refine((body) => Object.keys(body).length > 0, 'Provide at least one field to update');

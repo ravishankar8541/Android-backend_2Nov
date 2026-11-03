@@ -1,7 +1,23 @@
 import mongoose from 'mongoose';
 
+const monthlyAmount = { type: Number, default: 0, min: 0, max: 10000000 };
+
 const employeeSchema = new mongoose.Schema({
   employeeId: { type: String, required: true, unique: true, trim: true, uppercase: true, index: true },
+  salary: {
+    currency: { type: String, default: 'INR', uppercase: true, trim: true, maxlength: 3 },
+    basic: monthlyAmount,
+    hra: monthlyAmount,
+    specialAllowance: monthlyAmount,
+    bonus: monthlyAmount,
+    pfPercentage: { type: Number, default: 0, min: 0, max: 100 },
+    tds: monthlyAmount,
+    otherDeductions: monthlyAmount,
+    pan: { type: String, default: '', uppercase: true, trim: true, maxlength: 10 },
+    aadhaar: { type: String, default: '', trim: true, maxlength: 12 },
+    bankAccount: { type: String, default: '', trim: true, maxlength: 34 },
+    ifsc: { type: String, default: '', uppercase: true, trim: true, maxlength: 11 },
+  },
   firstName: { type: String, required: true, trim: true, maxlength: 80 },
   lastName: { type: String, required: true, trim: true, maxlength: 80 },
   email: { type: String, required: true, lowercase: true, trim: true, index: true },

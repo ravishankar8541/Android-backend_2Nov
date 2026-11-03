@@ -2,6 +2,7 @@ import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { HttpError } from '../utils/http-error.js';
+import { ROLES } from '../constants/roles.js';
 import { FaceTemplate } from '../models/FaceTemplate.js';
 import { BiometricSession } from '../models/BiometricSession.js';
 
@@ -13,6 +14,7 @@ function pagination(query) {
 
 export async function listEmployees(req, res) {
   const { page, limit, skip } = pagination(req.query);
+  const canViewSalary = req.auth.role === ROLES.SUPER_ADMIN || req.auth.role === ROLES.HR_ADMIN;
   const filter = {};
   if (req.auth.role === 'manager') {
     const team = req.auth.employeeId ? await Employee.find({ manager: req.auth.employeeId }).select('_id') : [];
@@ -30,8 +32,10 @@ export async function listEmployees(req, res) {
       { department: { $regex: escaped, $options: 'i' } },
     ];
   }
+  const listQuery = Employee.find(filter).populate('manager', 'firstName lastName').populate('office', 'name').populate('shift', 'name startTime endTime').sort({ createdAt: -1 }).skip(skip).limit(limit);
+  if (!canViewSalary) listQuery.select('-salary');
   const [rows, total] = await Promise.all([
-    Employee.find(filter).populate('manager', 'firstName lastName').populate('office', 'name').populate('shift', 'name startTime endTime').sort({ createdAt: -1 }).skip(skip).limit(limit),
+    listQuery,
     Employee.countDocuments(filter),
   ]);
   res.json({ success: true, message: 'Employees', data: { items: rows, pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
@@ -61,6 +65,10 @@ export async function updateEmployee(req, res) {
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
   const allowed = ['firstName', 'lastName', 'phone', 'department', 'designation', 'manager', 'office', 'shift', 'employmentStatus', 'faceEnrollmentStatus'];
   for (const key of allowed) if (req.body[key] !== undefined) employee[key] = req.body[key];
+  if (req.body.salary) {
+    const current = typeof employee.salary?.toObject === 'function' ? employee.salary.toObject() : (employee.salary ?? {});
+    employee.salary = { ...current, ...req.body.salary };
+  }
   await employee.save();
   if (req.body.faceEnrollmentStatus === 'disabled') {
     await FaceTemplate.deleteOne({ employee: employee.id });
@@ -69,7 +77,14 @@ export async function updateEmployee(req, res) {
   if (req.body.employmentStatus !== undefined) {
     await User.updateOne({ employee: employee.id }, { $set: { active: employee.employmentStatus === 'active' } });
   }
-  await AuditLog.create({ actor: req.auth.userId, action: 'employee.updated', entityType: 'Employee', entityId: employee.id, ipAddress: req.ip });
+  await AuditLog.create({
+    actor: req.auth.userId,
+    action: 'employee.updated',
+    entityType: 'Employee',
+    entityId: employee.id,
+    metadata: req.body.salary ? { salaryFields: Object.keys(req.body.salary) } : {},
+    ipAddress: req.ip,
+  });
   res.json({ success: true, message: 'Employee updated', data: { employee } });
 }
 
@@ -86,7 +101,10 @@ export async function resetEmployeePassword(req, res) {
 }
 
 export async function getEmployee(req, res) {
-  const employee = await Employee.findById(req.params.id).populate('manager', 'firstName lastName').populate('office', 'name').populate('shift', 'name startTime endTime');
+  const canViewSalary = req.auth.role === ROLES.SUPER_ADMIN || req.auth.role === ROLES.HR_ADMIN;
+  const employeeQuery = Employee.findById(req.params.id).populate('manager', 'firstName lastName').populate('office', 'name').populate('shift', 'name startTime endTime');
+  if (!canViewSalary) employeeQuery.select('-salary');
+  const employee = await employeeQuery;
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
   if (req.auth.role === 'manager' && (!req.auth.employeeId || employee.manager?.id !== req.auth.employeeId)) throw new HttpError(403, 'You can only view your direct team', 'FORBIDDEN');
   res.json({ success: true, message: 'Employee profile', data: { employee } });

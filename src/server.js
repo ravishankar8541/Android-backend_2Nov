@@ -2,10 +2,14 @@ import { app } from './app.js';
 import { connectDatabase } from './config/database.js';
 import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
+import { scheduleMonthlyPayroll } from './services/payroll-scheduler.js';
 
 try {
   await connectDatabase();
-  const server = app.listen(env.PORT, () => logger.info({ port: env.PORT }, 'VAM HRMS API listening'));
+  const server = app.listen(env.PORT, () => {
+    logger.info({ port: env.PORT }, 'VAM HRMS API listening');
+    if (env.NODE_ENV !== 'test') scheduleMonthlyPayroll();
+  });
   const shutdown = (signal) => {
     logger.info({ signal }, 'Shutting down');
     server.close(() => process.exit(0));
