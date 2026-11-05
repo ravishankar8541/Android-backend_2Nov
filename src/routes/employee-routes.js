@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createEmployee, deleteEmployee, getEmployee, listEmployees, resetEmployeePassword, updateEmployee, uploadEmployeePhoto } from '../controllers/employee-controller.js';
+import { createEmployee, deleteEmployee, getEmployee, listEmployees, listFaceChecks, resetEmployeePassword, reviewFaceCheck, updateEmployee, uploadEmployeePhoto } from '../controllers/employee-controller.js';
 import { allowRoles, requireAuth } from '../middleware/auth.js';
 import { ADMIN_ROLES, MANAGER_ROLES } from '../constants/roles.js';
 import { validate } from '../middleware/validate.js';
@@ -62,9 +62,20 @@ const updateSchema = z.object({
   attendanceVerification: z.enum(['face', 'selfie']).optional(),
 }).refine((body) => Object.keys(body).length > 0, 'Provide at least one field to update');
 const resetPasswordSchema = z.object({ temporaryPassword: z.string().min(5).max(200) });
+const faceCheckListSchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  status: z.enum(['pending', 'approved', 'rejected', 'all']).optional(),
+}).passthrough();
+const faceCheckReviewSchema = z.object({
+  decision: z.enum(['approved', 'rejected']),
+  reason: z.preprocess((value) => (value === '' ? undefined : value), z.string().trim().min(3).max(300).optional()),
+}).refine((body) => body.decision !== 'rejected' || Boolean(body.reason), { message: 'Please provide a reason for declining', path: ['reason'] });
 
 router.use(requireAuth);
 router.get('/', allowRoles(...MANAGER_ROLES), asyncHandler(listEmployees));
+router.get('/face-checks', allowRoles(...ADMIN_ROLES), validate(faceCheckListSchema, 'query'), asyncHandler(listFaceChecks));
+router.patch('/:id/face-check', allowRoles(...ADMIN_ROLES), validate(faceCheckReviewSchema), asyncHandler(reviewFaceCheck));
 router.post('/', allowRoles(...ADMIN_ROLES), validate(createSchema), asyncHandler(createEmployee));
 router.post('/photo', allowRoles(...ADMIN_ROLES), employeePhotoUpload, asyncHandler(uploadEmployeePhoto));
 router.get('/:id', allowRoles(...MANAGER_ROLES), asyncHandler(getEmployee));

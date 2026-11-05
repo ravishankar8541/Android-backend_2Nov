@@ -17,6 +17,8 @@ export async function markAttendance({ auth, body, type }) {
   if (!auth.employeeId) throw new HttpError(403, 'This account is not linked to an employee profile', 'EMPLOYEE_PROFILE_REQUIRED');
   const employee = await Employee.findById(auth.employeeId).populate('office').populate('shift');
   if (!employee || employee.employmentStatus !== 'active') throw new HttpError(403, 'Your employee profile is inactive', 'EMPLOYEE_INACTIVE');
+  if (employee.faceCheck?.status === 'rejected') throw new HttpError(403, 'Your face check was declined. Capture a new one and ask HR to approve it.', 'FACE_CHECK_REJECTED');
+  if (employee.faceCheck?.status === 'pending') throw new HttpError(403, 'An admin must approve your face check before you can mark attendance.', 'FACE_CHECK_PENDING');
   if (employee.attendanceVerification !== 'selfie' && employee.faceEnrollmentStatus === 'disabled') throw new HttpError(403, 'Face attendance is disabled for this employee. Contact HR.', 'FACE_ENROLLMENT_DISABLED');
   if (!employee.office?.active) throw new HttpError(409, 'No active office is assigned to your profile', 'OFFICE_NOT_ASSIGNED');
   if (!employee.shift?.active) throw new HttpError(409, 'No active shift is assigned to your profile', 'SHIFT_NOT_ASSIGNED');

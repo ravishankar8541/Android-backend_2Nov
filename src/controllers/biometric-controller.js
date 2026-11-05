@@ -1,4 +1,4 @@
-import { createLocalVerification, getMyFaceEnrollment, removeMyFaceEnrollment, saveMyFaceEnrollment } from '../services/biometric/local-provider.js';
+import { createLocalVerification, getMyFaceEnrollment, removeMyFaceEnrollment, saveFaceCheck, saveMyFaceEnrollment } from '../services/biometric/local-provider.js';
 import { createSelfieVerification } from '../services/biometric/provider.js';
 import { HttpError } from '../utils/http-error.js';
 
@@ -30,4 +30,10 @@ export async function verifySelfie(req, res) {
   if (!req.file?.buffer) throw new HttpError(400, 'Attach the captured photo to the request', 'SELFIE_REQUIRED');
   const data = await createSelfieVerification({ employeeId: req.auth.employeeId, eventType: req.body.eventType, buffer: req.file.buffer });
   res.status(201).json({ success: true, message: 'Photo captured for attendance', data });
+}
+
+export async function captureFaceCheck(req, res) {
+  if (!req.file?.buffer) throw new HttpError(400, 'Attach your face photo to the request', 'FACE_CHECK_REQUIRED');
+  const data = await saveFaceCheck({ employeeId: req.auth.employeeId, buffer: req.file.buffer });
+  res.status(201).json({ success: true, message: 'Face photo sent for approval', data });
 }

@@ -33,8 +33,19 @@ const employeeSchema = new mongoose.Schema({
   employmentStatus: { type: String, enum: ['active', 'inactive'], default: 'active', index: true },
   faceEnrollmentStatus: { type: String, enum: ['not_enrolled', 'pending', 'enrolled', 'disabled'], default: 'not_enrolled' },
   attendanceVerification: { type: String, enum: ['face', 'selfie'], default: 'face' },
+  faceCheck: {
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
+    photoUrl: { type: String, default: null, maxlength: 700 },
+    photoPublicId: { type: String, default: null, maxlength: 200 },
+    source: { type: String, enum: ['none', 'web', 'android'], default: 'none' },
+    capturedAt: { type: Date, default: null },
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    reviewedAt: { type: Date, default: null },
+    reviewReason: { type: String, default: '', maxlength: 300 },
+  },
 }, { timestamps: true });
 
 employeeSchema.index({ department: 1, employmentStatus: 1 });
+employeeSchema.index({ 'faceCheck.status': 1, employmentStatus: 1 });
 
 export const Employee = mongoose.model('Employee', employeeSchema);

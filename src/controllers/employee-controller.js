@@ -54,7 +54,7 @@ export async function createEmployee(req, res) {
     throw new HttpError(409, 'That email or employee ID is already in use', 'EMPLOYEE_ALREADY_EXISTS');
   }
   const { temporaryPassword, role, ...profile } = req.body;
-  const employee = await Employee.create({ ...profile, email, employeeId: req.body.employeeId.toUpperCase() });
+  const employee = await Employee.create({ ...profile, email, employeeId: req.body.employeeId.toUpperCase(), faceCheck: { status: 'pending' } });
   const user = new User({ email, role: role ?? 'employee', employee: employee.id });
   await user.setPassword(temporaryPassword);
   try {
@@ -104,7 +104,7 @@ export async function updateEmployee(req, res) {
 }
 
 export async function deleteEmployee(req, res) {
-  const employee = await Employee.findById(req.params.id).select('_id employeeId firstName lastName photoPublicId');
+  const employee = await Employee.findById(req.params.id).select('_id employeeId firstName lastName photoPublicId faceCheck');
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
   const account = await User.findOne({ employee: employee.id }).select('_id');
   if (account && account.id === req.auth.userId) throw new HttpError(400, 'You cannot delete the profile behind your own sign-in', 'EMPLOYEE_SELF_DELETE');
@@ -123,6 +123,7 @@ export async function deleteEmployee(req, res) {
   }
   await employee.deleteOne();
   await deleteEmployeePhoto(employee.photoPublicId);
+  await deleteEmployeePhoto(employee.faceCheck?.photoPublicId);
   await AuditLog.create({
     actor: req.auth.userId,
     action: 'employee.deleted',
@@ -154,4 +155,56 @@ export async function getEmployee(req, res) {
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
   if (req.auth.role === 'manager' && (!req.auth.employeeId || employee.manager?.id !== req.auth.employeeId)) throw new HttpError(403, 'You can only view your direct team', 'FORBIDDEN');
   res.json({ success: true, message: 'Employee profile', data: { employee } });
+}
+
+export async function listFaceChecks(req, res) {
+  const query = req.validatedQuery ?? req.query;
+  const { page, limit, skip } = pagination(query);
+  const status = query.status ?? 'pending';
+  const filter = status === 'all' ? {} : { 'faceCheck.status': status };
+  const fields = 'employeeId firstName lastName department email photoUrl faceEnrollmentStatus attendanceVerification createdAt '
+    + 'faceCheck.status faceCheck.photoUrl faceCheck.source faceCheck.capturedAt faceCheck.reviewedAt faceCheck.reviewReason';
+  const [items, total, pending] = await Promise.all([
+    Employee.find(filter).select(fields).sort({ 'faceCheck.capturedAt': -1, createdAt: -1 }).skip(skip).limit(limit),
+    Employee.countDocuments(filter),
+    Employee.countDocuments({ 'faceCheck.status': 'pending' }),
+  ]);
+  res.json({ success: true, message: 'Face checks', data: { items, pending, pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
+}
+
+export async function reviewFaceCheck(req, res) {
+  const employee = await Employee.findById(req.params.id);
+  if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
+  if (employee.faceCheck.status !== 'pending') throw new HttpError(409, 'This face check has already been reviewed', 'FACE_CHECK_REVIEWED');
+  const decision = req.body.decision;
+  if (decision === 'approved' && employee.faceCheck.source === 'none') {
+    throw new HttpError(409, 'This employee has not submitted a face photo or enrolled in the Android app yet', 'FACE_CHECK_EVIDENCE_MISSING');
+  }
+  employee.faceCheck.status = decision;
+  employee.faceCheck.reviewedBy = req.auth.userId;
+  employee.faceCheck.reviewedAt = new Date();
+  employee.faceCheck.reviewReason = decision === 'rejected' ? req.body.reason.trim() : '';
+  await employee.save();
+  const account = await User.findOne({ employee: employee.id }).select('_id');
+  if (account) {
+    await Notification.create({
+      recipient: account.id,
+      type: decision === 'approved' ? 'face_check_approved' : 'face_check_rejected',
+      title: decision === 'approved' ? 'Face check approved' : 'Face check declined',
+      message: decision === 'approved'
+        ? 'Your face check was approved. You can mark attendance from the Android app or this website every day.'
+        : `Your face check was declined. Reason: ${employee.faceCheck.reviewReason}. Capture a new one from your profile.`,
+      data: { employeeId: employee.id },
+    });
+  }
+  await AuditLog.create({
+    actor: req.auth.userId,
+    action: `face_check.${decision}`,
+    entityType: 'Employee',
+    entityId: employee.id,
+    reason: employee.faceCheck.reviewReason,
+    metadata: { employeeId: employee.employeeId, source: employee.faceCheck.source },
+    ipAddress: req.ip ?? '',
+  });
+  res.json({ success: true, message: decision === 'approved' ? 'Face check approved' : 'Face check declined', data: { employee: { id: employee.id, faceCheck: { status: employee.faceCheck.status, reviewedAt: employee.faceCheck.reviewedAt, reviewReason: employee.faceCheck.reviewReason } } } });
 }

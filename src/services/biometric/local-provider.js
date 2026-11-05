@@ -5,7 +5,7 @@ import { FaceTemplate } from '../../models/FaceTemplate.js';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../utils/http-error.js';
 import { decryptFaceTemplate, embeddingDistance, encryptFaceTemplate } from './template-crypto.js';
-import { uploadAttendanceSelfie } from '../cloudinary.js';
+import { deleteEmployeePhoto, uploadAttendanceSelfie, uploadFaceCheck } from '../cloudinary.js';
 
 function requireLocalProvider() {
   if (env.BIOMETRIC_PROVIDER !== 'local') {
@@ -22,7 +22,7 @@ export async function getMyFaceEnrollment(employeeId) {
   requireEmployeeId(employeeId);
   const [template, employee] = await Promise.all([
     FaceTemplate.findOne({ employee: employeeId }).select('enrolledAt'),
-    Employee.findById(employeeId).select('faceEnrollmentStatus attendanceVerification'),
+    Employee.findById(employeeId).select('faceEnrollmentStatus attendanceVerification faceCheck'),
   ]);
   const disabled = employee?.faceEnrollmentStatus === 'disabled';
   const verification = employee?.attendanceVerification ?? 'face';
@@ -33,6 +33,13 @@ export async function getMyFaceEnrollment(employeeId) {
     selfieAvailable: Boolean(env.CLOUDINARY_URL),
     providerAvailable: env.BIOMETRIC_PROVIDER === 'local',
     enrolledAt: template && !disabled ? template.enrolledAt : null,
+    faceCheck: {
+      status: employee?.faceCheck?.status ?? 'approved',
+      photoUrl: employee?.faceCheck?.photoUrl ?? null,
+      source: employee?.faceCheck?.source ?? 'none',
+      capturedAt: employee?.faceCheck?.capturedAt ?? null,
+      reviewReason: employee?.faceCheck?.reviewReason ?? '',
+    },
   };
 }
 
@@ -52,6 +59,7 @@ export async function saveMyFaceEnrollment(employeeId, embedding, consent) {
   ).select('enrolledAt');
   await BiometricSession.deleteMany({ employee: employeeId, usedAt: null, templateRevision: { $ne: revision } });
   employee.faceEnrollmentStatus = 'enrolled';
+  employee.faceCheck = { ...(employee.faceCheck?.toObject?.() ?? {}), source: 'android', capturedAt: template.enrolledAt };
   await employee.save();
   return { enrolled: true, enrolledAt: template.enrolledAt };
 }
@@ -64,6 +72,34 @@ export async function removeMyFaceEnrollment(employeeId) {
   await BiometricSession.deleteMany({ employee: employeeId, usedAt: null });
   await Employee.updateOne({ _id: employeeId }, { $set: { faceEnrollmentStatus: 'not_enrolled' } });
   return { enrolled: false };
+}
+
+/**
+ * A new hire's one-time face check: the frame an admin compares with the employee photo before any
+ * attendance is allowed. They may retake it while it waits or after a decline, but an approval is
+ * final and must go back through HR.
+ */
+export async function saveFaceCheck({ employeeId, buffer }) {
+  requireEmployeeId(employeeId);
+  const employee = await Employee.findById(employeeId);
+  if (!employee || employee.employmentStatus !== 'active') throw new HttpError(403, 'Your employee profile is inactive', 'EMPLOYEE_INACTIVE');
+  if (employee.faceCheck?.status === 'approved') throw new HttpError(409, 'Your face is already approved for daily attendance', 'FACE_CHECK_APPROVED');
+  const photo = await uploadFaceCheck(buffer);
+  const previousPublicId = employee.faceCheck?.photoPublicId ?? null;
+  employee.faceCheck = {
+    ...(employee.faceCheck?.toObject?.() ?? {}),
+    photoUrl: photo.url,
+    photoPublicId: photo.publicId,
+    source: 'web',
+    capturedAt: new Date(),
+    status: 'pending',
+    reviewedBy: null,
+    reviewedAt: null,
+    reviewReason: '',
+  };
+  await employee.save();
+  if (previousPublicId && previousPublicId !== photo.publicId) await deleteEmployeePhoto(previousPublicId);
+  return { status: 'pending', photoUrl: photo.url, capturedAt: employee.faceCheck.capturedAt };
 }
 
 export async function createLocalVerification({ employeeId, eventType, embedding, livenessPassed, livenessScore }) {

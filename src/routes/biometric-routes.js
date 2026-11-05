@@ -4,7 +4,7 @@ import { allowRoles, requireAuth } from '../middleware/auth.js';
 import { ROLES } from '../constants/roles.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/async-handler.js';
-import { deleteEnrollment, enrollFace, getEnrollment, verifyFace, verifySelfie } from '../controllers/biometric-controller.js';
+import { captureFaceCheck, deleteEnrollment, enrollFace, getEnrollment, verifyFace, verifySelfie } from '../controllers/biometric-controller.js';
 import { employeePhotoUpload } from '../middleware/employee-photo-upload.js';
 
 const router = Router();
@@ -27,5 +27,6 @@ router.post('/enroll', validate(enrollSchema), asyncHandler(enrollFace));
 router.delete('/me', asyncHandler(deleteEnrollment));
 router.post('/verify', validate(verifySchema), asyncHandler(verifyFace));
 router.post('/selfie', employeePhotoUpload, validate(selfieSchema), asyncHandler(verifySelfie));
+router.post('/face-check', employeePhotoUpload, asyncHandler(captureFaceCheck));
 
 export default router;

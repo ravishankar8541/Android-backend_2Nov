@@ -6,6 +6,7 @@ const { v2: cloudinary } = cloudinaryPackage;
 
 export const EMPLOYEE_PHOTO_FOLDER = 'vam/employees';
 export const ATTENDANCE_SELFIE_FOLDER = 'vam/attendance';
+export const FACE_CHECK_FOLDER = 'vam/face-checks';
 const AVATAR_SIZE = 512;
 const SELFIE_WIDTH = 900;
 
@@ -50,6 +51,23 @@ export function uploadAttendanceSelfie(buffer) {
       else resolve({ url: result.secure_url, publicId: result.public_id });
     });
     stream.on('error', () => reject(new HttpError(502, 'The photo could not be stored. Try again.', 'ATTENDANCE_SELFIE_UPLOAD_FAILED')));
+    stream.end(buffer);
+  });
+}
+
+/** The admin compares this frame against the employee photo, so it is stored cropped on the face. */
+export function uploadFaceCheck(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = client().uploader.upload_stream({
+      folder: FACE_CHECK_FOLDER,
+      resource_type: 'image',
+      format: 'jpg',
+      transformation: [{ width: AVATAR_SIZE, height: AVATAR_SIZE, crop: 'fill', gravity: 'face' }, { quality: 'auto:good' }],
+    }, (error, result) => {
+      if (error) reject(new HttpError(502, 'The photo could not be stored. Try again.', 'FACE_CHECK_UPLOAD_FAILED'));
+      else resolve({ url: result.secure_url, publicId: result.public_id });
+    });
+    stream.on('error', () => reject(new HttpError(502, 'The photo could not be stored. Try again.', 'FACE_CHECK_UPLOAD_FAILED')));
     stream.end(buffer);
   });
 }
