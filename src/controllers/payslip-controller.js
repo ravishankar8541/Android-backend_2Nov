@@ -52,13 +52,14 @@ export async function releaseMonth(req, res) {
 }
 
 export async function listPayslips(req, res) {
-  const { page, limit, skip } = pagination(req.query);
+  const query = req.validatedQuery ?? req.query;
+  const { page, limit, skip } = pagination(query);
   const filter = {};
-  if (req.query.monthKey) filter.monthKey = req.query.monthKey;
-  if (req.query.status && req.query.status !== 'all') filter.status = req.query.status;
-  if (req.query.employee) filter.employee = req.query.employee;
-  if (req.query.q) {
-    const escaped = req.query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (query.monthKey) filter.monthKey = query.monthKey;
+  if (query.status && query.status !== 'all') filter.status = query.status;
+  if (query.employee) filter.employee = query.employee;
+  if (query.q) {
+    const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const matches = await Employee.find({
       $or: [{ employeeId: { $regex: escaped, $options: 'i' } }, { firstName: { $regex: escaped, $options: 'i' } }, { lastName: { $regex: escaped, $options: 'i' } }],
     }).select('_id').limit(200);

@@ -8,7 +8,8 @@ import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 const reviewSchema = z.object({ status: z.enum(['approved', 'rejected']), reason: z.string().trim().max(1000).optional() });
-const filtersSchema = z.object({ page: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().positive().max(100).optional(), status: z.string().optional(), employee: z.string().optional() }).passthrough();
+const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
+const filtersSchema = z.object({ page: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().positive().max(100).optional(), status: z.enum(['all', 'pending', 'approved', 'rejected', 'cancelled']).optional(), employee: objectIdSchema.optional() }).passthrough();
 const monthSchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/, 'Use the YYYY-MM month format').optional() }).passthrough();
 const assignSchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/, 'Use the YYYY-MM month format'), days: z.coerce.number().min(0).max(31) });
 
