@@ -31,6 +31,7 @@ function employee(overrides = {}) {
     faceEnrollmentStatus: 'not_enrolled',
     attendanceVerification: 'face',
     faceCheck: faceCheck({}),
+    faceCheckState() { return Employee.prototype.faceCheckState.call(this); },
     office: { id: 'office-a', active: true, latitude: 0, longitude: 0, radiusMeters: 25 },
     shift: { active: true, startTime: '09:00', endTime: '18:00', breakMinutes: 60, graceMinutes: 10, weeklyOffDays: [] },
     save: async () => {},
@@ -58,7 +59,7 @@ test('attendance waits for the admin tick and a declined check never unlocks', a
 });
 
 test('a ticked face check leaves the remaining attendance rules untouched', async () => {
-  employee({ office: null });
+  employee({ faceCheck: faceCheck({ status: 'approved', source: 'web', photoUrl: faceCheckPhotoUrl }), office: null });
   await assert.rejects(checkIn(), { code: 'OFFICE_NOT_ASSIGNED' });
 });
 
@@ -75,12 +76,30 @@ test('the web face check stores the frame and keeps the profile waiting', async 
 
 test('an approved face is not captured over, while a declined one may be retaken', async () => {
   stubFaceCheckUpload();
-  employee({ faceCheck: faceCheck({ status: 'approved' }) });
+  employee({ faceCheck: faceCheck({ status: 'approved', source: 'web', photoUrl: faceCheckPhotoUrl }) });
   await assert.rejects(saveFaceCheck({ employeeId: 'employee-a', buffer: Buffer.from('x') }), { code: 'FACE_CHECK_APPROVED' });
   const doc = employee({ faceCheck: faceCheck({ status: 'rejected', reviewReason: 'Face was not visible' }) });
   await saveFaceCheck({ employeeId: 'employee-a', buffer: Buffer.from('x') });
   assert.equal(doc.faceCheck.status, 'pending');
   assert.equal(doc.faceCheck.reviewReason, '');
+});
+
+test('a profile with no face evidence waits for one even when the stored default says approved', async () => {
+  employee({ faceCheck: faceCheck({ status: 'approved' }) });
+  await assert.rejects(checkIn(), { code: 'FACE_CHECK_PENDING' });
+});
+
+test('an Android template enrolled before the face check field keeps attendance open', async () => {
+  employee({ faceEnrollmentStatus: 'enrolled', office: null });
+  await assert.rejects(checkIn(), { code: 'OFFICE_NOT_ASSIGNED' });
+});
+
+test('an evidence-less profile may submit its first face photo', async () => {
+  stubFaceCheckUpload();
+  const doc = employee({ faceCheck: faceCheck({ status: 'approved' }) });
+  const data = await saveFaceCheck({ employeeId: 'employee-a', buffer: Buffer.from('jpeg-bytes') });
+  assert.equal(data.status, 'pending');
+  assert.equal(doc.faceCheck.source, 'web');
 });
 
 test('enrolling in the Android app records the channel without unlocking attendance', async () => {

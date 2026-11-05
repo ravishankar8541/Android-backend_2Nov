@@ -48,4 +48,17 @@ const employeeSchema = new mongoose.Schema({
 employeeSchema.index({ department: 1, employmentStatus: 1 });
 employeeSchema.index({ 'faceCheck.status': 1, employmentStatus: 1 });
 
+/**
+ * The face check the attendance gate actually enforces. Profiles created before this field existed
+ * carry no evidence at all, so an enrolled Android template counts as proof while an empty profile
+ * waits for a face photo — otherwise the stored default would hand them a tick they never earned.
+ */
+employeeSchema.methods.faceCheckState = function faceCheckState() {
+  const check = this.faceCheck;
+  if (check?.status === 'rejected') return 'rejected';
+  if (check?.source && check.source !== 'none') return check.status;
+  if (this.faceEnrollmentStatus === 'enrolled') return 'approved';
+  return 'pending';
+};
+
 export const Employee = mongoose.model('Employee', employeeSchema);

@@ -34,7 +34,7 @@ export async function getMyFaceEnrollment(employeeId) {
     providerAvailable: env.BIOMETRIC_PROVIDER === 'local',
     enrolledAt: template && !disabled ? template.enrolledAt : null,
     faceCheck: {
-      status: employee?.faceCheck?.status ?? 'approved',
+      status: employee?.faceCheckState?.() ?? employee?.faceCheck?.status ?? 'approved',
       photoUrl: employee?.faceCheck?.photoUrl ?? null,
       source: employee?.faceCheck?.source ?? 'none',
       capturedAt: employee?.faceCheck?.capturedAt ?? null,
@@ -83,7 +83,7 @@ export async function saveFaceCheck({ employeeId, buffer }) {
   requireEmployeeId(employeeId);
   const employee = await Employee.findById(employeeId);
   if (!employee || employee.employmentStatus !== 'active') throw new HttpError(403, 'Your employee profile is inactive', 'EMPLOYEE_INACTIVE');
-  if (employee.faceCheck?.status === 'approved') throw new HttpError(409, 'Your face is already approved for daily attendance', 'FACE_CHECK_APPROVED');
+  if ((employee.faceCheckState?.() ?? employee.faceCheck?.status) === 'approved') throw new HttpError(409, 'Your face is already approved for daily attendance', 'FACE_CHECK_APPROVED');
   const photo = await uploadFaceCheck(buffer);
   const previousPublicId = employee.faceCheck?.photoPublicId ?? null;
   employee.faceCheck = {

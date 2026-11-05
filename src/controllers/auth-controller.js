@@ -156,7 +156,7 @@ export async function getCurrentUser(req, res) {
       employmentStatus: user.employee.employmentStatus,
       faceEnrollmentStatus: user.employee.faceEnrollmentStatus,
       attendanceVerification: user.employee.attendanceVerification,
-      faceCheck: user.employee.faceCheck,
+      faceCheck: { ...user.employee.faceCheck?.toObject?.(), status: user.employee.faceCheckState() },
       office: user.employee.office,
       shift: user.employee.shift,
       manager: user.employee.manager,

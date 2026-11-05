@@ -161,25 +161,26 @@ export async function listFaceChecks(req, res) {
   const query = req.validatedQuery ?? req.query;
   const { page, limit, skip } = pagination(query);
   const status = query.status ?? 'pending';
-  const filter = status === 'all' ? {} : { 'faceCheck.status': status };
+  const awaitingEvidence = { employmentStatus: 'active', faceEnrollmentStatus: { $ne: 'enrolled' }, $or: [{ 'faceCheck.source': 'none' }, { 'faceCheck.source': { $exists: false } }] };
+  const filter = status === 'all' ? {} : status === 'pending' ? { $or: [{ 'faceCheck.status': 'pending' }, awaitingEvidence] } : { 'faceCheck.status': status };
   const fields = 'employeeId firstName lastName department email photoUrl faceEnrollmentStatus attendanceVerification createdAt '
     + 'faceCheck.status faceCheck.photoUrl faceCheck.source faceCheck.capturedAt faceCheck.reviewedAt faceCheck.reviewReason';
-  const [items, total, pending] = await Promise.all([
+  const [rows, total, pending] = await Promise.all([
     Employee.find(filter).select(fields).sort({ 'faceCheck.capturedAt': -1, createdAt: -1 }).skip(skip).limit(limit),
     Employee.countDocuments(filter),
-    Employee.countDocuments({ 'faceCheck.status': 'pending' }),
+    Employee.countDocuments({ $or: [{ 'faceCheck.status': 'pending' }, awaitingEvidence] }),
   ]);
+  const items = rows.map((row) => ({ ...row.toObject(), faceCheck: { ...row.faceCheck?.toObject?.(), status: row.faceCheckState() } }));
   res.json({ success: true, message: 'Face checks', data: { items, pending, pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
 }
 
 export async function reviewFaceCheck(req, res) {
   const employee = await Employee.findById(req.params.id);
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
-  if (employee.faceCheck.status !== 'pending') throw new HttpError(409, 'This face check has already been reviewed', 'FACE_CHECK_REVIEWED');
+  const hasEvidence = employee.faceCheck.source !== 'none' || employee.faceEnrollmentStatus === 'enrolled';
+  if (!hasEvidence) throw new HttpError(409, 'This employee has not submitted a face photo or enrolled in the Android app yet', 'FACE_CHECK_EVIDENCE_MISSING');
+  if (employee.faceCheckState() !== 'pending') throw new HttpError(409, 'This face check has already been reviewed', 'FACE_CHECK_REVIEWED');
   const decision = req.body.decision;
-  if (decision === 'approved' && employee.faceCheck.source === 'none') {
-    throw new HttpError(409, 'This employee has not submitted a face photo or enrolled in the Android app yet', 'FACE_CHECK_EVIDENCE_MISSING');
-  }
   employee.faceCheck.status = decision;
   employee.faceCheck.reviewedBy = req.auth.userId;
   employee.faceCheck.reviewedAt = new Date();
