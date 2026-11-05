@@ -38,12 +38,18 @@ function employee(overrides) {
   return doc;
 }
 
-test('a selfie session is only opened for a profile HR switched to photo check-in', async () => {
+test('a selfie session opens for any active profile, whatever its check-in mode', async () => {
+  stubUpload();
+  const created = [];
+  mock.method(BiometricSession, 'create', async (doc) => { created.push(doc); return { id: 'proof-selfie', expiresAt: doc.expiresAt }; });
   employee({ attendanceVerification: 'face' });
-  await assert.rejects(createSelfieVerification({ employeeId: 'employee-a', eventType: 'IN', buffer: Buffer.from('x') }), { code: 'ATTENDANCE_VERIFICATION_MISMATCH' });
-  employee({ employmentStatus: 'inactive', attendanceVerification: 'selfie' });
+  const data = await createSelfieVerification({ employeeId: 'employee-a', eventType: 'IN', buffer: Buffer.from('x') });
+  assert.equal(data.verificationSessionId, 'proof-selfie');
+  assert.equal(created[0].method, 'selfie');
+
+  employee({ employmentStatus: 'inactive', attendanceVerification: 'face' });
   await assert.rejects(createSelfieVerification({ employeeId: 'employee-a', eventType: 'IN', buffer: Buffer.from('x') }), { code: 'EMPLOYEE_INACTIVE' });
-  await assert.rejects(createSelfieVerification({ employeeId: 'employee-a', eventType: 'MID' }), { code: 'INVALID_EVENT_TYPE' });
+  await assert.rejects(createSelfieVerification({ employeeId: 'employee-a', eventType: 'MID', buffer: Buffer.from('x') }), { code: 'INVALID_EVENT_TYPE' });
 });
 
 test('the selfie is stored as attendance evidence and opens the same single-use session as a face match', async () => {

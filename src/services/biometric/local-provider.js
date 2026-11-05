@@ -97,18 +97,16 @@ export async function createLocalVerification({ employeeId, eventType, embedding
 }
 
 /**
- * iPhone, iPad and browser builds cannot load the Android face model, so HR can switch a profile
- * to a captured selfie instead. The same single-use session record backs both paths, which keeps
- * replay protection identical; the photo itself is the evidence an admin reviews.
+ * iPhone, iPad and browsers cannot load the Android face model, so they capture a selfie instead.
+ * Any active profile may use this path regardless of its attendanceVerification setting; the same
+ * single-use session record backs both, which keeps replay protection identical, and the photo
+ * itself is the evidence an admin reviews.
  */
 export async function createSelfieVerification({ employeeId, eventType, buffer }) {
   requireEmployeeId(employeeId);
   if (eventType !== 'IN' && eventType !== 'OUT') throw new HttpError(400, 'Invalid attendance event type', 'INVALID_EVENT_TYPE');
   const employee = await Employee.findById(employeeId);
   if (!employee || employee.employmentStatus !== 'active') throw new HttpError(403, 'Your employee profile is inactive', 'EMPLOYEE_INACTIVE');
-  if (employee.attendanceVerification !== 'selfie') {
-    throw new HttpError(403, 'This profile verifies attendance with a face match on the Android app. Ask HR to switch it to photo check-in.', 'ATTENDANCE_VERIFICATION_MISMATCH');
-  }
   const photo = await uploadAttendanceSelfie(buffer);
   const session = await BiometricSession.create({
     _id: crypto.randomUUID(),
