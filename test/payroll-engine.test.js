@@ -43,6 +43,18 @@ test('a half day and an approved paid leave both keep their day payable in part 
   assert.equal(onLeave.attendance.lopDays, 0);
 });
 
+test('leave inside the monthly quota stays paid and only the days over it cut salary', () => {
+  const withinQuota = draft({ paidLeaveKeys: new Set(['2026-09-15', '2026-09-16']) });
+  assert.equal(withinQuota.attendance.lopDays, 0);
+  assert.equal(withinQuota.netPay, 14000);
+  const beyondQuota = draft({ paidLeaveKeys: new Set(['2026-09-15']), unpaidLeaveKeys: new Set(['2026-09-21', '2026-09-22']) });
+  assert.equal(beyondQuota.attendance.lopDays, 2);
+  assert.equal(beyondQuota.deductions.find((line) => line.key === 'lop').amount, 933);
+  assert.equal(beyondQuota.netPay, 13067);
+  const overOnWeeklyOff = draft({ unpaidLeaveKeys: new Set(['2026-09-06']) });
+  assert.equal(overOnWeeklyOff.attendance.lopDays, 0);
+});
+
 test('joining mid-month pro-rates the earnings on the days the employee was on payroll', () => {
   const slip = draft({ employee: { ...EMPLOYEE, joiningKey: '2026-09-16' } });
   assert.equal(slip.periodStart, '2026-09-16');

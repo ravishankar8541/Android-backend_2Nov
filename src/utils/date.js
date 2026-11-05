@@ -9,6 +9,10 @@ export function dateKeyInTimeZone(date, timeZone) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+export function monthKeyInTimeZone(date, timeZone) {
+  return dateKeyInTimeZone(date, timeZone).slice(0, 7);
+}
+
 export function startOfDateKey(dateKey) {
   return new Date(`${dateKey}T00:00:00.000Z`);
 }

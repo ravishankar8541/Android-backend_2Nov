@@ -8,6 +8,7 @@ import { AttendanceRegularization } from '../models/AttendanceRegularization.js'
 import { FaceTemplate } from '../models/FaceTemplate.js';
 import { BiometricSession } from '../models/BiometricSession.js';
 import { LeaveRequest } from '../models/LeaveRequest.js';
+import { LeaveQuota } from '../models/LeaveQuota.js';
 import { Notification } from '../models/Notification.js';
 import { PasswordResetRequest } from '../models/PasswordResetRequest.js';
 import { Payslip } from '../models/Payslip.js';
@@ -111,9 +112,10 @@ export async function deleteEmployee(req, res) {
   if (account && account.id === req.auth.userId) throw new HttpError(400, 'You cannot delete the profile behind your own sign-in', 'EMPLOYEE_SELF_DELETE');
 
   await Employee.updateMany({ manager: employee.id }, { $set: { manager: null } });
-  const [attendance, leaves, corrections, payslips] = await Promise.all([
+  const [attendance, leaves, quotas, corrections, payslips] = await Promise.all([
     Attendance.deleteMany({ employee: employee.id }),
     LeaveRequest.deleteMany({ employee: employee.id }),
+    LeaveQuota.deleteMany({ employee: employee.id }),
     AttendanceRegularization.deleteMany({ employee: employee.id }),
     Payslip.deleteMany({ employee: employee.id }),
   ]);
@@ -130,7 +132,7 @@ export async function deleteEmployee(req, res) {
     action: 'employee.deleted',
     entityType: 'Employee',
     entityId: employee.id,
-    metadata: { employeeId: employee.employeeId, attendance: attendance.deletedCount, leaves: leaves.deletedCount, corrections: corrections.deletedCount, payslips: payslips.deletedCount },
+    metadata: { employeeId: employee.employeeId, attendance: attendance.deletedCount, leaves: leaves.deletedCount, quotas: quotas.deletedCount, corrections: corrections.deletedCount, payslips: payslips.deletedCount },
     ipAddress: req.ip,
   });
   res.json({ success: true, message: 'Employee removed', data: { employeeId: employee.employeeId, name: `${employee.firstName} ${employee.lastName}` } });

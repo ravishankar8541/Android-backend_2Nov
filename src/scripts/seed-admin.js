@@ -21,14 +21,14 @@ try {
     console.log(`Created super admin ${email}.`);
   }
   const defaults = [
-    { name: 'Casual Leave', code: 'CL', annualAllowance: 12, paid: true, carryForward: false },
-    { name: 'Sick Leave', code: 'SL', annualAllowance: 6, paid: true, carryForward: false },
-    { name: 'Earned Leave', code: 'EL', annualAllowance: 18, paid: true, carryForward: true },
-    { name: 'Optional Holiday', code: 'OH', annualAllowance: 2, paid: true, carryForward: false },
-    { name: 'Unpaid Leave', code: 'UL', annualAllowance: 0, paid: false, carryForward: false },
+    { name: 'Casual Leave', code: 'CL' },
+    { name: 'Sick Leave', code: 'SL' },
+    { name: 'Earned Leave', code: 'EL' },
+    { name: 'Optional Holiday', code: 'OH' },
+    { name: 'Unpaid Leave', code: 'UL' },
   ];
   for (const leaveType of defaults) await LeaveType.updateOne({ code: leaveType.code }, { $setOnInsert: leaveType }, { upsert: true });
-  console.log('Default leave types are ready.');
+  console.log('Default leave labels are ready. Assign each employee their monthly paid leave quota from the Leave page.');
 } catch (error) {
   logger.error({ err: error }, 'Unable to seed admin');
   process.exitCode = 1;

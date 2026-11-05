@@ -13,6 +13,7 @@ const schema = z.object({
   DEFAULT_GEOFENCE_RADIUS_METERS: z.coerce.number().positive().default(25),
   MAX_LOCATION_ACCURACY_METERS: z.coerce.number().positive().default(100),
   OFFICE_TIME_ZONE: z.string().default('Asia/Kolkata'),
+  DEFAULT_MONTHLY_LEAVES: z.coerce.number().min(0).max(31).default(2),
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   SEED_ADMIN_PASSWORD: z.string().min(12).optional(),
   BIOMETRIC_PROVIDER: z.enum(['disabled', 'local']).default('local'),

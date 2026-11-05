@@ -1,18 +1,16 @@
-import { Holiday } from '../models/Holiday.js';
 import { Attendance } from '../models/Attendance.js';
 import { Employee } from '../models/Employee.js';
-import { LeaveType } from '../models/LeaveType.js';
-import { LeaveRequest } from '../models/LeaveRequest.js';
 import { Payslip } from '../models/Payslip.js';
 import { env } from '../config/env.js';
-import { dateKeyInTimeZone, shiftDateKey } from '../utils/date.js';
+import { dateKeyInTimeZone, monthKeyInTimeZone } from '../utils/date.js';
 import { amountInWords } from '../utils/amount-in-words.js';
 import { buildPayslipDraft, monthRange, shiftMonthKey } from './payroll-engine.js';
+import { loadLeaveQuotaContext } from './leave-quota.js';
 
 const SALARY_KEYS = ['basic', 'hra', 'specialAllowance', 'bonus'];
 
 export function currentMonthKey(date = new Date()) {
-  return dateKeyInTimeZone(date, env.OFFICE_TIME_ZONE).slice(0, 7);
+  return monthKeyInTimeZone(date, env.OFFICE_TIME_ZONE);
 }
 
 export function latestClosedMonthKey() {
@@ -23,36 +21,12 @@ function monthlyGross(salary) {
   return SALARY_KEYS.reduce((sum, key) => sum + (Number(salary?.[key]) || 0), 0);
 }
 
-function leaveDateKey(value) {
-  return typeof value === 'string' ? value.slice(0, 10) : dateKeyInTimeZone(value, env.OFFICE_TIME_ZONE);
-}
-
-function expandLeaveKeys(startDate, endDate, firstKey, lastKey) {
-  const start = leaveDateKey(startDate) < firstKey ? firstKey : leaveDateKey(startDate);
-  const end = leaveDateKey(endDate) > lastKey ? lastKey : leaveDateKey(endDate);
-  if (start > end) return [];
-  const keys = [];
-  let cursor = start;
-  for (let guard = 0; guard <= 400 && cursor <= end; guard += 1) {
-    keys.push(cursor);
-    cursor = shiftDateKey(cursor, 1);
-  }
-  return keys;
-}
-
-async function loadMonthContext(monthKey, employeeIds) {
+async function loadMonthContext(monthKey, employees) {
   const { firstKey, lastKey } = monthRange(monthKey);
-  const paidTypeIds = (await LeaveType.find({ paid: true, active: true }).select('_id')).map(({ _id }) => _id);
-  const [attendanceRows, leaveRows, holidays] = await Promise.all([
-    Attendance.find({ employee: { $in: employeeIds }, dateKey: { $gte: firstKey, $lte: lastKey } }).select('employee dateKey status'),
-    LeaveRequest.find({
-      employee: { $in: employeeIds },
-      status: 'approved',
-      leaveType: { $in: paidTypeIds },
-      startDate: { $lte: new Date(`${lastKey}T23:59:59.000Z`) },
-      endDate: { $gte: new Date(`${firstKey}T00:00:00.000Z`) },
-    }).select('employee startDate endDate'),
-    Holiday.find({ date: { $gte: firstKey, $lte: lastKey }, active: true }).select('date'),
+  const ids = employees.map(({ _id }) => _id);
+  const [attendanceRows, quota] = await Promise.all([
+    ids.length ? Attendance.find({ employee: { $in: ids }, dateKey: { $gte: firstKey, $lte: lastKey } }).select('employee dateKey status') : [],
+    loadLeaveQuotaContext({ monthKey, employees }),
   ]);
   const attendanceByEmployee = new Map();
   for (const row of attendanceRows) {
@@ -60,17 +34,10 @@ async function loadMonthContext(monthKey, employeeIds) {
     if (!attendanceByEmployee.has(key)) attendanceByEmployee.set(key, new Map());
     attendanceByEmployee.get(key).set(row.dateKey, row.status);
   }
-  const leaveByEmployee = new Map();
-  for (const row of leaveRows) {
-    const key = row.employee.toString();
-    if (!leaveByEmployee.has(key)) leaveByEmployee.set(key, new Set());
-    const bucket = leaveByEmployee.get(key);
-    for (const dateKey of expandLeaveKeys(row.startDate, row.endDate, firstKey, lastKey)) bucket.add(dateKey);
-  }
   return {
     attendanceByEmployee,
-    leaveByEmployee,
-    holidayKeys: new Set(holidays.map(({ date }) => date)),
+    leaveByEmployee: quota.summaries,
+    holidayKeys: quota.holidayKeys,
   };
 }
 
@@ -82,7 +49,7 @@ export async function generatePayslipsForMonth({ monthKey, actorId = null, force
   const skippedNoSalary = employees.length - payable.length;
   const { firstKey, lastKey } = monthRange(monthKey);
   const ids = payable.map(({ _id }) => _id);
-  const context = ids.length ? await loadMonthContext(monthKey, ids) : { attendanceByEmployee: new Map(), leaveByEmployee: new Map(), holidayKeys: new Set() };
+  const context = await loadMonthContext(monthKey, payable);
   const existingRows = await Payslip.find({ monthKey, employee: { $in: ids } }).select('employee status manual');
   const existingByEmployee = new Map(existingRows.map((slip) => [slip.employee.toString(), slip]));
   const now = new Date();
@@ -112,7 +79,8 @@ export async function generatePayslipsForMonth({ monthKey, actorId = null, force
       },
       monthKey,
       attendanceByDate: context.attendanceByEmployee.get(employee.id) ?? new Map(),
-      paidLeaveKeys: context.leaveByEmployee.get(employee.id) ?? new Set(),
+      paidLeaveKeys: context.leaveByEmployee.get(employee.id)?.paidKeys ?? new Set(),
+      unpaidLeaveKeys: context.leaveByEmployee.get(employee.id)?.unpaidKeys ?? new Set(),
       holidayKeys: context.holidayKeys,
     });
     if (!draft) {

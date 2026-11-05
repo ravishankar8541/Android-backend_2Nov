@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const leaveRequestSchema = new mongoose.Schema({
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true, index: true },
-  leaveType: { type: mongoose.Schema.Types.ObjectId, ref: 'LeaveType', required: true },
+  leaveType: { type: mongoose.Schema.Types.ObjectId, ref: 'LeaveType', default: null },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
   days: { type: Number, required: true, min: 0.5 },

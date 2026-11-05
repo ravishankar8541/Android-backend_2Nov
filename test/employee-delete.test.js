@@ -9,6 +9,7 @@ const { User } = await import('../src/models/User.js');
 const { Attendance } = await import('../src/models/Attendance.js');
 const { AttendanceRegularization } = await import('../src/models/AttendanceRegularization.js');
 const { LeaveRequest } = await import('../src/models/LeaveRequest.js');
+const { LeaveQuota } = await import('../src/models/LeaveQuota.js');
 const { Payslip } = await import('../src/models/Payslip.js');
 const { FaceTemplate } = await import('../src/models/FaceTemplate.js');
 const { BiometricSession } = await import('../src/models/BiometricSession.js');
@@ -29,6 +30,7 @@ function setup({ employee, account, caller = 'admin-a' } = {}) {
   const many = (name) => async () => { removed.push(name); return { deletedCount: 2 }; };
   mock.method(Attendance, 'deleteMany', many('attendance'));
   mock.method(LeaveRequest, 'deleteMany', many('leave'));
+  mock.method(LeaveQuota, 'deleteMany', many('quota'));
   mock.method(AttendanceRegularization, 'deleteMany', many('correction'));
   mock.method(Payslip, 'deleteMany', many('payslip'));
   mock.method(FaceTemplate, 'deleteOne', many('face'));
@@ -52,12 +54,12 @@ const profile = { _id: 'employee-a', id: 'employee-a', employeeId: 'VAM-014', fi
 test('removing an employee clears their account, records and team links', async () => {
   const context = setup({ employee: profile, account: { id: 'user-a' } });
   await deleteEmployee(context.req, context.res);
-  for (const expected of ['attendance', 'leave', 'correction', 'payslip', 'face', 'session', 'notification', 'reset', 'account', 'employee']) {
+  for (const expected of ['attendance', 'leave', 'quota', 'correction', 'payslip', 'face', 'session', 'notification', 'reset', 'account', 'employee']) {
     assert.ok(context.removed.includes(expected), `${expected} was not removed`);
   }
   assert.deepEqual(context.responses[0].data, { employeeId: 'VAM-014', name: 'Shubham Kumar' });
   assert.equal(context.audits[0].action, 'employee.deleted');
-  assert.deepEqual(context.audits[0].metadata, { employeeId: 'VAM-014', attendance: 2, leaves: 2, corrections: 2, payslips: 2 });
+  assert.deepEqual(context.audits[0].metadata, { employeeId: 'VAM-014', attendance: 2, leaves: 2, quotas: 2, corrections: 2, payslips: 2 });
 });
 
 test('an employee with no sign-in account is still removed', async () => {
