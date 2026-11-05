@@ -59,7 +59,8 @@ export async function saveMyFaceEnrollment(employeeId, embedding, consent) {
   ).select('enrolledAt');
   await BiometricSession.deleteMany({ employee: employeeId, usedAt: null, templateRevision: { $ne: revision } });
   employee.faceEnrollmentStatus = 'enrolled';
-  employee.faceCheck = { ...(employee.faceCheck?.toObject?.() ?? {}), source: 'android', capturedAt: template.enrolledAt };
+  const reopened = employee.faceCheck?.status === 'rejected' ? { status: 'pending', reviewedBy: null, reviewedAt: null, reviewReason: '' } : {};
+  employee.faceCheck = { ...(employee.faceCheck?.toObject?.() ?? {}), source: 'android', capturedAt: template.enrolledAt, ...reopened };
   await employee.save();
   return { enrolled: true, enrolledAt: template.enrolledAt };
 }

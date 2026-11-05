@@ -81,7 +81,7 @@ export async function listAttendance(req, res) {
     narrowEmployeeIds(teamIds);
   }
   if (allowedEmployeeIds !== null) filter.employee = { $in: allowedEmployeeIds };
-  if (query.from || query.to) {
+  if ((query.from || query.to) && !query.date) {
     filter.dateKey = { ...(query.from ? { $gte: query.from } : {}), ...(query.to ? { $lte: query.to } : {}) };
   }
   const [items, total] = await Promise.all([
@@ -134,7 +134,12 @@ export async function correctAttendance(req, res) {
   attendance.events.sort((a, b) => a.occurredAt - b.occurredAt);
   attendance.netWorkingMinutes = calculateNetWorkingMinutes(attendance.events, employee.shift?.breakMinutes ?? 0);
   attendance.status = 'manual_review';
-  await attendance.save();
+  try {
+    await attendance.save();
+  } catch (error) {
+    if (error?.name === 'VersionError') throw new HttpError(409, 'This attendance record changed while you were correcting it. Reload it and try again.', 'ATTENDANCE_CONFLICT');
+    throw error;
+  }
   await AuditLog.create({ actor: req.auth.userId, action: 'attendance.corrected', entityType: 'Attendance', entityId: attendance.id, reason: req.body.reason, ipAddress: req.ip });
   res.json({ success: true, message: 'Attendance corrected', data: { attendance } });
 }
@@ -160,7 +165,7 @@ export const attendanceEditSchema = z.object({
     accuracyMeters: z.number().min(0).max(10000),
     distanceMeters: z.number().min(0).max(100000),
     deviceId: z.string().trim().max(120).optional(),
-  })).max(20).optional(),
+  })).min(1, 'A day needs at least one check-in or check-out').max(20).optional(),
   reason: z.string().trim().min(8).max(1000),
 });
 

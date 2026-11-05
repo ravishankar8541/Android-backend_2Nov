@@ -23,9 +23,13 @@ function monthlyGross(salary) {
   return SALARY_KEYS.reduce((sum, key) => sum + (Number(salary?.[key]) || 0), 0);
 }
 
+function leaveDateKey(value) {
+  return typeof value === 'string' ? value.slice(0, 10) : dateKeyInTimeZone(value, env.OFFICE_TIME_ZONE);
+}
+
 function expandLeaveKeys(startDate, endDate, firstKey, lastKey) {
-  const start = startDate.slice(0, 10) < firstKey ? firstKey : startDate.slice(0, 10);
-  const end = endDate.slice(0, 10) > lastKey ? lastKey : endDate.slice(0, 10);
+  const start = leaveDateKey(startDate) < firstKey ? firstKey : leaveDateKey(startDate);
+  const end = leaveDateKey(endDate) > lastKey ? lastKey : leaveDateKey(endDate);
   if (start > end) return [];
   const keys = [];
   let cursor = start;
@@ -118,6 +122,7 @@ export async function generatePayslipsForMonth({ monthKey, actorId = null, force
     const payload = {
       ...draft,
       amountInWords: amountInWords(draft.netPay, draft.currency),
+      issueDate: now,
       generatedBy: actorId,
       generatedAt: now,
       manual: false,

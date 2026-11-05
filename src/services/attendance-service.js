@@ -65,7 +65,7 @@ export async function markAttendance({ auth, body, type }) {
     const isCompanyHoliday = await Holiday.exists({ date: dateKey, active: true, category: { $in: ['company', 'national', 'festival'] } });
     let status = shift.weeklyOffDays.includes(weekDay) || isCompanyHoliday ? 'overtime' : 'present';
     if (status === 'present') {
-      const shiftMinute = overnightShift && currentMinute < shiftEndsAt ? currentMinute + 1440 : currentMinute;
+      const shiftMinute = overnightShift && currentMinute <= shiftEndsAt + 240 ? currentMinute + 1440 : currentMinute;
       if (shiftMinute > shiftStartsAt + shift.graceMinutes) status = 'late';
     }
     attendance = new Attendance({ employee: employee.id, office: employee.office.id, dateKey, status, events: [] });

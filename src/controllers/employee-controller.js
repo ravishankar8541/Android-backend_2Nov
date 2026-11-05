@@ -2,7 +2,7 @@ import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { HttpError } from '../utils/http-error.js';
-import { ROLES } from '../constants/roles.js';
+import { ROLES, canManageAccount } from '../constants/roles.js';
 import { Attendance } from '../models/Attendance.js';
 import { AttendanceRegularization } from '../models/AttendanceRegularization.js';
 import { FaceTemplate } from '../models/FaceTemplate.js';
@@ -20,17 +20,18 @@ function pagination(query) {
 }
 
 export async function listEmployees(req, res) {
-  const { page, limit, skip } = pagination(req.query);
+  const query = req.validatedQuery ?? req.query;
+  const { page, limit, skip } = pagination(query);
   const canViewSalary = req.auth.role === ROLES.SUPER_ADMIN || req.auth.role === ROLES.HR_ADMIN;
   const filter = {};
   if (req.auth.role === 'manager') {
     const team = req.auth.employeeId ? await Employee.find({ manager: req.auth.employeeId }).select('_id') : [];
     filter._id = { $in: team.map(({ _id }) => _id) };
   }
-  if (req.query.status && req.query.status !== 'all') filter.employmentStatus = req.query.status;
-  if (req.query.department) filter.department = req.query.department;
-  if (req.query.q) {
-    const escaped = req.query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (query.status && query.status !== 'all') filter.employmentStatus = query.status;
+  if (query.department) filter.department = query.department;
+  if (query.q) {
+    const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     filter.$or = [
       { employeeId: { $regex: escaped, $options: 'i' } },
       { firstName: { $regex: escaped, $options: 'i' } },
@@ -140,6 +141,7 @@ export async function resetEmployeePassword(req, res) {
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
   const user = await User.findOne({ employee: employee.id }).select('+passwordHash +refreshTokenHash');
   if (!user) throw new HttpError(404, 'Employee sign-in account not found', 'EMPLOYEE_ACCOUNT_NOT_FOUND');
+  if (!canManageAccount(req.auth.role, user.role)) throw new HttpError(403, 'You cannot reset the password of an account at your own rank or above', 'ACCOUNT_RANK_TOO_HIGH');
   await user.setPassword(req.body.temporaryPassword);
   user.refreshTokenHash = null;
   await user.save({ validateBeforeSave: false });

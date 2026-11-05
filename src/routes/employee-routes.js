@@ -5,6 +5,7 @@ import { allowRoles, requireAuth } from '../middleware/auth.js';
 import { ADMIN_ROLES, MANAGER_ROLES } from '../constants/roles.js';
 import { validate } from '../middleware/validate.js';
 import { employeePhotoUpload } from '../middleware/employee-photo-upload.js';
+import { EMPLOYEE_PHOTO_FOLDER } from '../services/cloudinary.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
@@ -24,6 +25,7 @@ const salarySchema = z.object({
   ifsc: z.string().trim().max(11).optional(),
 }).refine((value) => Object.keys(value).length > 0, 'Provide at least one salary field');
 const photoUrlSchema = z.string().trim().startsWith('https://', 'Photo must be a hosted image URL').max(700).nullable();
+const photoPublicIdSchema = z.string().trim().startsWith(`${EMPLOYEE_PHOTO_FOLDER}/`, 'Photo reference is not valid').max(200).nullable();
 const joiningDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-03-15');
 const createSchema = z.object({
   employeeId: z.string().trim().min(2).max(30),
@@ -35,7 +37,7 @@ const createSchema = z.object({
   designation: z.string().trim().max(100).optional(),
   joiningDate: joiningDateSchema.optional(),
   photoUrl: photoUrlSchema.optional(),
-  photoPublicId: z.string().trim().max(200).nullable().optional(),
+  photoPublicId: photoPublicIdSchema.optional(),
   manager: z.string().optional(),
   office: z.string().optional(),
   shift: z.string().optional(),
@@ -52,7 +54,7 @@ const updateSchema = z.object({
   designation: z.string().trim().max(100).optional(),
   joiningDate: joiningDateSchema.optional(),
   photoUrl: photoUrlSchema.optional(),
-  photoPublicId: z.string().trim().max(200).nullable().optional(),
+  photoPublicId: photoPublicIdSchema.optional(),
   manager: z.string().nullable().optional(),
   office: z.string().nullable().optional(),
   shift: z.string().nullable().optional(),
@@ -67,13 +69,20 @@ const faceCheckListSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
   status: z.enum(['pending', 'approved', 'rejected', 'all']).optional(),
 }).passthrough();
+const employeeListSchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  status: z.enum(['active', 'inactive', 'all']).optional(),
+  department: z.string().trim().max(80).optional(),
+  q: z.string().trim().max(120).optional(),
+}).passthrough();
 const faceCheckReviewSchema = z.object({
   decision: z.enum(['approved', 'rejected']),
   reason: z.preprocess((value) => (value === '' ? undefined : value), z.string().trim().min(3).max(300).optional()),
 }).refine((body) => body.decision !== 'rejected' || Boolean(body.reason), { message: 'Please provide a reason for declining', path: ['reason'] });
 
 router.use(requireAuth);
-router.get('/', allowRoles(...MANAGER_ROLES), asyncHandler(listEmployees));
+router.get('/', allowRoles(...MANAGER_ROLES), validate(employeeListSchema, 'query'), asyncHandler(listEmployees));
 router.get('/face-checks', allowRoles(...ADMIN_ROLES), validate(faceCheckListSchema, 'query'), asyncHandler(listFaceChecks));
 router.patch('/:id/face-check', allowRoles(...ADMIN_ROLES), validate(faceCheckReviewSchema), asyncHandler(reviewFaceCheck));
 router.post('/', allowRoles(...ADMIN_ROLES), validate(createSchema), asyncHandler(createEmployee));

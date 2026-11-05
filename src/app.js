@@ -33,6 +33,7 @@ app.use(cors({ origin(origin, callback) {
   return callback(new Error('Origin is not allowed by CORS'));
 }, credentials: true, exposedHeaders: ['Content-Disposition'] }));
 app.use(express.json({ limit: '256kb' }));
+app.set('trust proxy', 1);
 app.use(cookieParser());
 app.use(pinoHttp({ logger, customLogLevel(_req, res, error) { return error || res.statusCode >= 500 ? 'error' : 'info'; } }));
 app.use('/api', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));

@@ -8,6 +8,10 @@ export function notFound(_req, _res, next) {
 export function errorHandler(error, req, res, _next) {
   if (error?.code === 11000) error = new HttpError(409, 'A record with this value already exists', 'DUPLICATE_RECORD');
   if (error?.name === 'CastError') error = new HttpError(400, 'Invalid record identifier', 'INVALID_ID');
+  if (error?.name === 'ValidationError') {
+    const details = Object.fromEntries(Object.entries(error.errors ?? {}).map(([field, value]) => [field, value?.message ?? 'Invalid value']));
+    error = new HttpError(400, Object.values(details)[0] ?? 'Some fields are invalid', 'VALIDATION_ERROR', details);
+  }
   const status = error.status || 500;
   if (status >= 500) logger.error({ err: error, path: req.path, method: req.method }, 'Request failed');
   res.status(status).json({

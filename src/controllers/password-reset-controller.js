@@ -3,6 +3,7 @@ import { Notification } from '../models/Notification.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { User } from '../models/User.js';
 import { HttpError } from '../utils/http-error.js';
+import { canManageAccount } from '../constants/roles.js';
 
 export async function listPasswordResets(req, res) {
   const query = req.validatedQuery ?? req.query;
@@ -26,6 +27,7 @@ export async function reviewPasswordReset(req, res) {
     if (!request.user) throw new HttpError(409, 'The sign-in account no longer exists', 'USER_NOT_FOUND');
     if (!request.user.active) throw new HttpError(409, 'This account is inactive, so a reset cannot be approved', 'ACCOUNT_INACTIVE');
     if (req.body.temporaryPassword) {
+      if (!canManageAccount(req.auth.role, request.user.role)) throw new HttpError(403, 'You cannot set the password of an account at your own rank or above', 'ACCOUNT_RANK_TOO_HIGH');
       const user = await User.findById(request.user.id).select('+passwordHash +refreshTokenHash');
       await user.setPassword(req.body.temporaryPassword);
       user.refreshTokenHash = null;

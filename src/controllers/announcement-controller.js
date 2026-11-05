@@ -4,6 +4,7 @@ import { Employee } from '../models/Employee.js';
 import { Notification } from '../models/Notification.js';
 import { User } from '../models/User.js';
 import { ADMIN_ROLES } from '../constants/roles.js';
+import { fitNotification } from '../services/reviewer-notifications.js';
 import { HttpError } from '../utils/http-error.js';
 
 export async function listAnnouncements(req, res) {
@@ -30,11 +31,17 @@ export async function createAnnouncement(req, res) {
   if (announcement.audienceType === 'employees') employeeFilter._id = { $in: announcement.employees };
   const employeeIds = (await Employee.find(employeeFilter).select('_id').lean()).map(({ _id }) => _id);
   const recipients = await User.find({ active: true, employee: { $in: employeeIds } }).select('_id').lean();
+  let notifiedEmployees = 0;
   if (recipients.length) {
+    const payload = fitNotification({ type: 'announcement', title: announcement.title, message: announcement.message, data: { announcementId: announcement.id } });
     try {
-      await Notification.insertMany(recipients.map(({ _id }) => ({ recipient: _id, type: 'announcement', title: announcement.title, message: announcement.message, data: { announcementId: announcement.id } })), { ordered: false });
-    } catch (error) { req.log?.error({ err: error, announcementId: announcement.id }, 'Unable to create announcement notifications'); }
+      const created = await Notification.insertMany(recipients.map(({ _id }) => ({ ...payload, recipient: _id })), { ordered: false });
+      notifiedEmployees = created.length;
+    } catch (error) {
+      notifiedEmployees = error?.insertedDocs?.length ?? 0;
+      req.log?.error({ err: error, announcementId: announcement.id }, 'Unable to create announcement notifications');
+    }
   }
   await AuditLog.create({ actor: req.auth.userId, action: 'announcement.created', entityType: 'Announcement', entityId: announcement.id, ipAddress: req.ip });
-  res.status(201).json({ success: true, message: 'Announcement published', data: { announcement, notifiedEmployees: recipients.length } });
+  res.status(201).json({ success: true, message: 'Announcement published', data: { announcement, notifiedEmployees } });
 }

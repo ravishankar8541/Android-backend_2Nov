@@ -59,9 +59,13 @@ export function assertAlternatingEventList(events) {
   return ordered;
 }
 
+function midnightUtc(dateKey) {
+  return Date.UTC(Number(dateKey.slice(0, 4)), Number(dateKey.slice(5, 7)) - 1, Number(dateKey.slice(8, 10)));
+}
+
 function shiftToDay(occurredAt, fromKey, toKey) {
-  const offset = new Date(`${toKey}T00:00:00`).getTime() - new Date(`${fromKey}T00:00:00`).getTime();
-  return new Date(new Date(occurredAt).getTime() + offset);
+  const days = Math.round((midnightUtc(toKey) - midnightUtc(fromKey)) / 86_400_000);
+  return new Date(new Date(occurredAt).getTime() + days * 86_400_000);
 }
 
 /**
