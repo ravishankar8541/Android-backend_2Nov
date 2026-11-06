@@ -30,6 +30,7 @@ const employeeSchema = new mongoose.Schema({
   office: { type: mongoose.Schema.Types.ObjectId, ref: 'Office', default: null },
   shift: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift', default: null },
   joiningDate: { type: Date, default: Date.now },
+  dateOfBirth: { type: Date, default: null },
   employmentStatus: { type: String, enum: ['active', 'inactive'], default: 'active', index: true },
   faceEnrollmentStatus: { type: String, enum: ['not_enrolled', 'pending', 'enrolled', 'disabled'], default: 'not_enrolled' },
   attendanceVerification: { type: String, enum: ['face', 'selfie'], default: 'face' },

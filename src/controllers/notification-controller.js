@@ -1,7 +1,9 @@
 import { Notification } from '../models/Notification.js';
 import { HttpError } from '../utils/http-error.js';
+import { wakeBirthdayWishes } from '../services/birthday-notifications.js';
 
 export async function listMyNotifications(req, res) {
+  wakeBirthdayWishes();
   const query = req.validatedQuery ?? req.query;
   const page = Math.max(1, Number(query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(query.limit) || 30));

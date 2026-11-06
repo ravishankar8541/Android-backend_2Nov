@@ -27,6 +27,7 @@ const salarySchema = z.object({
 const photoUrlSchema = z.string().trim().startsWith('https://', 'Photo must be a hosted image URL').max(700).nullable();
 const photoPublicIdSchema = z.string().trim().startsWith(`${EMPLOYEE_PHOTO_FOLDER}/`, 'Photo reference is not valid').max(200).nullable();
 const joiningDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-03-15');
+const dateOfBirthSchema = z.union([joiningDateSchema, z.null()]);
 const createSchema = z.object({
   employeeId: z.string().trim().min(2).max(30),
   firstName: z.string().trim().min(1).max(80),
@@ -36,6 +37,7 @@ const createSchema = z.object({
   department: z.string().trim().max(80).optional(),
   designation: z.string().trim().max(100).optional(),
   joiningDate: joiningDateSchema.optional(),
+  dateOfBirth: dateOfBirthSchema.optional(),
   photoUrl: photoUrlSchema.optional(),
   photoPublicId: photoPublicIdSchema.optional(),
   manager: z.string().optional(),
@@ -53,6 +55,7 @@ const updateSchema = z.object({
   department: z.string().trim().max(80).optional(),
   designation: z.string().trim().max(100).optional(),
   joiningDate: joiningDateSchema.optional(),
+  dateOfBirth: dateOfBirthSchema.optional(),
   photoUrl: photoUrlSchema.optional(),
   photoPublicId: photoPublicIdSchema.optional(),
   manager: z.string().nullable().optional(),
