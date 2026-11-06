@@ -18,10 +18,16 @@ export async function catchUpMissingPayroll() {
   return summary;
 }
 
+const MAX_TIMEOUT_MS = 2 ** 31 - 1; // Node clamps a longer wait to 1ms, which would spin the timer
+
 export function scheduleMonthlyPayroll() {
   const schedule = () => {
-    const delay = Math.max(1000, nextRunAt(new Date()).getTime() - Date.now());
+    const delay = nextRunAt(new Date()).getTime() - Date.now();
     const timer = setTimeout(async () => {
+      if (delay > MAX_TIMEOUT_MS) {
+        schedule();
+        return;
+      }
       try {
         const summary = await generatePayslipsForMonth({ monthKey: latestClosedMonthKey() });
         logger.info({ monthKey: summary.monthKey, created: summary.created, updated: summary.updated }, 'Monthly payslip generation finished');
@@ -30,7 +36,7 @@ export function scheduleMonthlyPayroll() {
       } finally {
         schedule();
       }
-    }, delay);
+    }, Math.max(1000, Math.min(delay, MAX_TIMEOUT_MS)));
     timer.unref();
   };
   schedule();

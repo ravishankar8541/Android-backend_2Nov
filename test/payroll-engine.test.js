@@ -55,6 +55,18 @@ test('leave inside the monthly quota stays paid and only the days over it cut sa
   assert.equal(overOnWeeklyOff.attendance.lopDays, 0);
 });
 
+test('a half-day leave pays half the day and an on_leave row is never a shortfall', () => {
+  const halfPaid = draft({ halfPaidLeaveKeys: new Set(['2026-09-10']) });
+  assert.equal(halfPaid.attendance.paidDays, 29.5);
+  assert.equal(halfPaid.attendance.lopDays, 0.5);
+  assert.equal(halfPaid.deductions.find((line) => line.key === 'lop').amount, 233);
+  const halfUnpaidOnOffDay = draft({ halfUnpaidLeaveKeys: new Set(['2026-09-06']) });
+  assert.equal(halfUnpaidOnOffDay.attendance.lopDays, 0);
+  const marked = draft({ attendanceByDate: new Map([['2026-09-15', 'on_leave']]) });
+  assert.equal(marked.attendance.lopDays, 0);
+  assert.equal(marked.netPay, 14000);
+});
+
 test('joining mid-month pro-rates the earnings on the days the employee was on payroll', () => {
   const slip = draft({ employee: { ...EMPLOYEE, joiningKey: '2026-09-16' } });
   assert.equal(slip.periodStart, '2026-09-16');

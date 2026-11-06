@@ -55,9 +55,10 @@ const NO_KEYS = new Set();
 const NO_DAYS = [];
 
 // Within-quota leave is fully paid; leave beyond the admin's monthly quota is loss of pay even
-// when the employee never had an attendance row created for that day.
-function dayValue({ dateKey, attendanceByDate, paidLeaveKeys, unpaidLeaveKeys = NO_KEYS, weeklyOffDays = NO_DAYS, holidayKeys }) {
+// when the employee never had an attendance row created for that day. A half day pays half.
+function dayValue({ dateKey, attendanceByDate, paidLeaveKeys, halfPaidLeaveKeys = NO_KEYS, unpaidLeaveKeys = NO_KEYS, halfUnpaidLeaveKeys = NO_KEYS, weeklyOffDays = NO_DAYS, holidayKeys }) {
   const isOffDay = holidayKeys.has(dateKey) || weeklyOffDays.includes(weekdayOfDateKey(dateKey));
+  if (halfPaidLeaveKeys.has(dateKey) || halfUnpaidLeaveKeys.has(dateKey)) return isOffDay ? 1 : 0.5;
   if (paidLeaveKeys.has(dateKey)) return 1;
   if (unpaidLeaveKeys.has(dateKey)) return isOffDay ? 1 : 0;
   const status = attendanceByDate.get(dateKey);
@@ -113,13 +114,13 @@ export function recalculate(input) {
   return { grossEarnings, totalDeductions, netPay: grossEarnings - totalDeductions };
 }
 
-export function buildPayslipDraft({ employee, monthKey, attendanceByDate, paidLeaveKeys, unpaidLeaveKeys, holidayKeys }) {
+export function buildPayslipDraft({ employee, monthKey, attendanceByDate, paidLeaveKeys, halfPaidLeaveKeys, unpaidLeaveKeys, halfUnpaidLeaveKeys, holidayKeys }) {
   const { firstKey, lastKey, daysInMonth, label } = monthRange(monthKey);
   const joiningKey = employee.joiningKey ?? null;
   if (joiningKey && joiningKey > lastKey) return null;
   const startKey = joiningKey && joiningKey > firstKey ? joiningKey : firstKey;
   const weeklyOffDays = employee.shift?.weeklyOffDays ?? [0, 6];
-  const attendance = computePayDays({ startKey, endKey: lastKey, attendanceByDate, paidLeaveKeys, unpaidLeaveKeys, weeklyOffDays, holidayKeys });
+  const attendance = computePayDays({ startKey, endKey: lastKey, attendanceByDate, paidLeaveKeys, halfPaidLeaveKeys, unpaidLeaveKeys, halfUnpaidLeaveKeys, weeklyOffDays, holidayKeys });
   const lines = buildPayslipLines({ salary: employee.salary, attendance, daysInMonth });
   return {
     monthKey,

@@ -13,6 +13,15 @@ function minuteOfDay(date) {
   return Number(pieces[0]) * 60 + Number(pieces[1]);
 }
 
+// Also decides the day when a check-in replaces the placeholder row an approved leave left behind.
+async function startingStatusForDay({ shift, dateKey, currentMinute, shiftStartsAt, shiftEndsAt, overnightShift }) {
+  const weekDay = new Date(`${dateKey}T12:00:00.000Z`).getUTCDay();
+  const isCompanyHoliday = await Holiday.exists({ date: dateKey, active: true, category: { $in: ['company', 'national', 'festival'] } });
+  if (shift.weeklyOffDays.includes(weekDay) || isCompanyHoliday) return 'overtime';
+  const shiftMinute = overnightShift && currentMinute <= shiftEndsAt + 240 ? currentMinute + 1440 : currentMinute;
+  return shiftMinute > shiftStartsAt + shift.graceMinutes ? 'late' : 'present';
+}
+
 export async function markAttendance({ auth, body, type }) {
   if (!auth.employeeId) throw new HttpError(403, 'This account is not linked to an employee profile', 'EMPLOYEE_PROFILE_REQUIRED');
   const employee = await Employee.findById(auth.employeeId).populate('office').populate('shift');
@@ -60,15 +69,10 @@ export async function markAttendance({ auth, body, type }) {
 
   if (!attendance) {
     if (type !== 'IN') throw new HttpError(409, 'You need to check in before checking out', 'INVALID_ATTENDANCE_SEQUENCE');
-    const shift = employee.shift;
-    const weekDay = new Date(`${dateKey}T12:00:00.000Z`).getUTCDay();
-    const isCompanyHoliday = await Holiday.exists({ date: dateKey, active: true, category: { $in: ['company', 'national', 'festival'] } });
-    let status = shift.weeklyOffDays.includes(weekDay) || isCompanyHoliday ? 'overtime' : 'present';
-    if (status === 'present') {
-      const shiftMinute = overnightShift && currentMinute <= shiftEndsAt + 240 ? currentMinute + 1440 : currentMinute;
-      if (shiftMinute > shiftStartsAt + shift.graceMinutes) status = 'late';
-    }
+    const status = await startingStatusForDay({ shift: employee.shift, dateKey, currentMinute, shiftStartsAt, shiftEndsAt, overnightShift });
     attendance = new Attendance({ employee: employee.id, office: employee.office.id, dateKey, status, events: [] });
+  } else if (attendance.status === 'on_leave' && !attendance.events.length) {
+    attendance.status = await startingStatusForDay({ shift: employee.shift, dateKey: attendance.dateKey, currentMinute, shiftStartsAt, shiftEndsAt, overnightShift });
   }
 
   attendance.events.push({

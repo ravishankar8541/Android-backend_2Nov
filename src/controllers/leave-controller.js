@@ -12,7 +12,8 @@ import { env } from '../config/env.js';
 import { dateKeyInTimeZone, monthKeyInTimeZone } from '../utils/date.js';
 import { HttpError } from '../utils/http-error.js';
 import { buildLeaveListFilter } from '../services/leave-list-access.js';
-import { loadLeaveQuotaContext } from '../services/leave-quota.js';
+import { markLeaveAttendance } from '../services/leave-attendance.js';
+import { findQuotaOverage, loadLeaveQuotaContext } from '../services/leave-quota.js';
 
 export const createLeaveSchema = z.object({
   leaveType: z.string().trim().min(1).optional(),
@@ -128,6 +129,10 @@ export async function createLeaveRequest(req, res) {
       },
     });
   }
+  const overage = await findQuotaOverage({ employeeId: req.auth.employeeId, startDate: req.body.startDate, endDate: req.body.endDate, halfDay: req.body.halfDay });
+  if (overage) {
+    throw new HttpError(422, `You have ${overage.available} paid leave day(s) left in ${overage.monthKey}, and this request needs ${overage.requested}. Ask HR to assign more days for that month.`, 'LEAVE_QUOTA_EXCEEDED', overage);
+  }
   const leaveRequest = await LeaveRequest.create({ ...req.body, employee: req.auth.employeeId, days });
   await AuditLog.create({ actor: req.auth.userId, action: 'leave.requested', entityType: 'LeaveRequest', entityId: leaveRequest.id, ipAddress: req.ip });
   await notifyReviewers(req, employee._id, {
@@ -183,11 +188,30 @@ export async function reviewLeaveRequest(req, res) {
     throw new HttpError(403, 'You can only review leave for your direct team', 'FORBIDDEN');
   }
   if (req.body.status === 'rejected' && !req.body.reason?.trim()) throw new HttpError(422, 'Please provide a reason for rejection', 'REJECTION_REASON_REQUIRED');
+  if (req.body.status === 'approved') {
+    const overage = await findQuotaOverage({
+      employeeId: request.employee,
+      startDate: request.startDate,
+      endDate: request.endDate,
+      halfDay: request.halfDay,
+      excludeRequestId: request.id,
+    });
+    if (overage) {
+      throw new HttpError(422, `This employee has only ${overage.available} of ${overage.assigned} paid leave day(s) left in ${overage.monthKey}, and this request needs ${overage.requested}. Assign more paid days for that month first.`, 'LEAVE_QUOTA_EXCEEDED', overage);
+    }
+  }
   request.status = req.body.status;
   request.reviewedBy = req.auth.userId;
   request.reviewedAt = new Date();
   request.reviewReason = req.body.reason?.trim() ?? '';
   await request.save();
+  if (request.status === 'approved') {
+    try {
+      await markLeaveAttendance({ employeeId: request.employee, startDate: request.startDate, endDate: request.endDate });
+    } catch (error) {
+      req.log?.error({ err: error, leaveRequestId: request.id }, 'Unable to mark approved leave in the attendance register');
+    }
+  }
   await AuditLog.create({ actor: req.auth.userId, action: `leave.${request.status}`, entityType: 'LeaveRequest', entityId: request.id, reason: request.reviewReason, ipAddress: req.ip });
   const recipient = await User.findOne({ employee: request.employee }).select('_id');
   if (recipient) {

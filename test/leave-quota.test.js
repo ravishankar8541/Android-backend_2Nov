@@ -47,7 +47,11 @@ test('a half day spends half the quota and pending requests only wait for review
   const half = allocate([request('2026-09-08', '2026-09-08', 'approved', true)], 1);
   assert.equal(half.used, 0.5);
   assert.equal(half.remaining, 0.5);
-  assert.deepEqual([...half.paidKeys], ['2026-09-08']);
+  assert.equal(half.paidKeys.size, 0);
+  assert.deepEqual([...half.halfPaidKeys], ['2026-09-08']);
+  const beyond = allocate([request('2026-09-08', '2026-09-08', 'approved', true)], 0);
+  assert.equal(beyond.paidKeys.size, 0);
+  assert.deepEqual([...beyond.halfUnpaidKeys], ['2026-09-08']);
   const pending = allocate([request('2026-09-08', '2026-09-10', 'pending')], 2);
   assert.equal(pending.used, 0);
   assert.equal(pending.pending, 3);

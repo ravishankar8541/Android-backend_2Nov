@@ -145,7 +145,7 @@ export async function correctAttendance(req, res) {
 }
 
 const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
-const ATTENDANCE_STATUSES = ['present', 'late', 'half_day', 'absent', 'early_leave', 'overtime', 'manual_review'];
+const ATTENDANCE_STATUSES = ['present', 'late', 'half_day', 'absent', 'early_leave', 'overtime', 'manual_review', 'on_leave'];
 
 export const attendanceEditSchema = z.object({
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the YYYY-MM-DD date format'),

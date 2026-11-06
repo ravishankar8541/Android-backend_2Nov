@@ -12,7 +12,7 @@ const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }, 'Enter a valid calendar date');
 const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
-const filtersSchema = z.object({ page: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().positive().max(100).optional(), date: dateSchema.optional(), from: dateSchema.optional(), to: dateSchema.optional(), status: z.enum(['all', 'present', 'late', 'half_day', 'absent', 'early_leave', 'overtime', 'manual_review']).optional(), office: objectIdSchema.optional(), shift: objectIdSchema.optional(), department: z.string().optional(), employee: z.string().optional() }).passthrough().refine(({ from, to }) => !from || !to || from <= to, { message: 'From date must be on or before the end date', path: ['to'] });
+const filtersSchema = z.object({ page: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().positive().max(100).optional(), date: dateSchema.optional(), from: dateSchema.optional(), to: dateSchema.optional(), status: z.enum(['all', 'present', 'late', 'half_day', 'absent', 'early_leave', 'overtime', 'manual_review', 'on_leave']).optional(), office: objectIdSchema.optional(), shift: objectIdSchema.optional(), department: z.string().optional(), employee: z.string().optional() }).passthrough().refine(({ from, to }) => !from || !to || from <= to, { message: 'From date must be on or before the end date', path: ['to'] });
 
 router.use(requireAuth);
 router.post('/check-in', allowRoles(ROLES.EMPLOYEE, ROLES.MANAGER), validate(attendanceEventSchema), asyncHandler(checkIn));

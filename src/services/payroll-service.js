@@ -80,7 +80,9 @@ export async function generatePayslipsForMonth({ monthKey, actorId = null, force
       monthKey,
       attendanceByDate: context.attendanceByEmployee.get(employee.id) ?? new Map(),
       paidLeaveKeys: context.leaveByEmployee.get(employee.id)?.paidKeys ?? new Set(),
+      halfPaidLeaveKeys: context.leaveByEmployee.get(employee.id)?.halfPaidKeys ?? new Set(),
       unpaidLeaveKeys: context.leaveByEmployee.get(employee.id)?.unpaidKeys ?? new Set(),
+      halfUnpaidLeaveKeys: context.leaveByEmployee.get(employee.id)?.halfUnpaidKeys ?? new Set(),
       holidayKeys: context.holidayKeys,
     });
     if (!draft) {
@@ -89,6 +91,7 @@ export async function generatePayslipsForMonth({ monthKey, actorId = null, force
     }
     const payload = {
       ...draft,
+      employee: employee._id,
       amountInWords: amountInWords(draft.netPay, draft.currency),
       issueDate: now,
       generatedBy: actorId,

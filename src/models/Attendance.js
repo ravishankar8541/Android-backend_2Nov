@@ -27,7 +27,7 @@ const attendanceSchema = new mongoose.Schema({
   office: { type: mongoose.Schema.Types.ObjectId, ref: 'Office', required: true, index: true },
   dateKey: { type: String, required: true, index: true },
   events: { type: [attendanceEventSchema], default: [] },
-  status: { type: String, enum: ['present', 'late', 'half_day', 'absent', 'early_leave', 'overtime', 'manual_review'], default: 'present', index: true },
+  status: { type: String, enum: ['present', 'late', 'half_day', 'absent', 'early_leave', 'overtime', 'manual_review', 'on_leave'], default: 'present', index: true },
   netWorkingMinutes: { type: Number, default: 0 },
 }, { timestamps: true, optimisticConcurrency: true });
 
