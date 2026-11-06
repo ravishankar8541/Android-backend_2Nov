@@ -13,6 +13,7 @@ import { Notification } from '../models/Notification.js';
 import { PasswordResetRequest } from '../models/PasswordResetRequest.js';
 import { Payslip } from '../models/Payslip.js';
 import { deleteEmployeePhoto, uploadEmployeePhoto as storeEmployeePhoto } from '../services/cloudinary.js';
+import { announceBirthdayNow } from '../services/birthday-notifications.js';
 
 function pagination(query) {
   const page = Math.max(1, Number(query.page) || 1);
@@ -66,6 +67,7 @@ export async function createEmployee(req, res) {
     throw error;
   }
   await AuditLog.create({ actor: req.auth.userId, action: 'employee.created', entityType: 'Employee', entityId: employee.id, ipAddress: req.ip });
+  if (employee.dateOfBirth) announceBirthdayNow();
   res.status(201).json({ success: true, message: 'Employee created', data: { employee } });
 }
 
@@ -102,6 +104,7 @@ export async function updateEmployee(req, res) {
     metadata: req.body.salary ? { salaryFields: Object.keys(req.body.salary) } : {},
     ipAddress: req.ip,
   });
+  if (req.body.dateOfBirth) announceBirthdayNow();
   res.json({ success: true, message: 'Employee updated', data: { employee } });
 }
 

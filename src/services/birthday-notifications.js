@@ -70,6 +70,12 @@ export function wakeBirthdayWishes() {
   sendBirthdayWishes({ now }).catch((error) => logger.error({ err: error }, 'Birthday wish catch-up failed'));
 }
 
+/** An admin just recorded a birthday, so the team hears about it now instead of at the next window. */
+export function announceBirthdayNow() {
+  lastLazyAttempt = 0;
+  sendBirthdayWishes().catch((error) => logger.error({ err: error }, 'Birthday announcement failed after a profile save'));
+}
+
 export function scheduleBirthdayWishes() {
   const schedule = () => {
     const delay = Math.max(1000, nextRunAt(new Date()).getTime() - Date.now());
