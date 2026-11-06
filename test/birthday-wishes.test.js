@@ -25,19 +25,43 @@ function wire({ employees = [RAJU, OTHER], exists = false } = {}) {
   const inserted = [];
   mock.method(Employee, 'find', () => chain(employees));
   mock.method(User, 'find', () => chain(ACCOUNTS));
-  mock.method(Notification, 'exists', async () => exists);
+  mock.method(Notification, 'exists', async (filter) => (typeof exists === 'function' ? exists(filter) : exists));
   mock.method(Notification, 'insertMany', async (docs) => { inserted.push(...docs); return docs; });
   return inserted;
 }
 
-test('everyone except the birthday employee receives the wish', async () => {
+test('the team hears about it and the birthday employee gets the company wish', async () => {
   const inserted = wire();
   const result = await sendBirthdayWishes({ now: MORNING });
   assert.equal(result.sent, 1);
-  assert.deepEqual(inserted.map((item) => item.recipient), ['u2', 'u3']);
+  assert.deepEqual(inserted.map((item) => item.recipient), ['u2', 'u3', 'u1']);
   assert.equal(inserted[0].type, 'birthday_wish');
   assert.equal(inserted[0].title, "Today is Raju Ali's birthday");
   assert.match(inserted[0].message, /VAM-01/);
+  const own = inserted.find((item) => item.recipient === 'u1');
+  assert.equal(own.title, 'Happy birthday, Raju!');
+  assert.match(own.message, /VAM People/);
+  assert.equal(own.data.employeeId, 'VAM-01');
+});
+
+test('the broadcast still goes out when the birthday employee has no login', async () => {
+  const accounts = [{ _id: 'u2', employee: 'e2' }, { _id: 'u3', employee: null }];
+  mock.method(Employee, 'find', () => chain([RAJU, OTHER]));
+  mock.method(User, 'find', () => chain(accounts));
+  mock.method(Notification, 'exists', async () => false);
+  const inserted = [];
+  mock.method(Notification, 'insertMany', async (docs) => { inserted.push(...docs); return docs; });
+  const result = await sendBirthdayWishes({ now: MORNING });
+  assert.equal(result.sent, 1);
+  assert.deepEqual(inserted.map((item) => item.recipient), ['u2', 'u3']);
+});
+
+test('a birthday already announced to the team still reaches the birthday employee', async () => {
+  const inserted = wire({ exists: (filter) => !filter.recipient });
+  const result = await sendBirthdayWishes({ now: MORNING });
+  assert.equal(result.sent, 1);
+  assert.deepEqual(inserted.map((item) => item.recipient), ['u1']);
+  assert.equal(inserted[0].title, 'Happy birthday, Raju!');
 });
 
 test('a birthday already announced today is not announced twice', async () => {

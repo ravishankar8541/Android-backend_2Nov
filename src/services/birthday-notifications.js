@@ -31,17 +31,38 @@ export async function sendBirthdayWishes({ now = new Date() } = {}) {
   if (!celebrants.length) return { dateKey, sent };
   const accounts = await User.find({ active: true }).select('_id employee').lean();
   for (const celebrant of celebrants) {
-    if (await Notification.exists({ type: 'birthday_wish', 'data.dateKey': dateKey, 'data.employeeId': celebrant.employeeId })) continue;
-    const recipients = accounts.filter((account) => account.employee?.toString() !== celebrant._id.toString());
-    if (!recipients.length) continue;
     const name = `${celebrant.firstName} ${celebrant.lastName}`;
-    const payload = fitNotification({
-      type: 'birthday_wish',
-      title: `Today is ${name}'s birthday`,
-      message: `${name} (${celebrant.employeeId}${celebrant.department ? ` · ${celebrant.department}` : ''}) has a birthday today. Wish them a great one!`,
-      data: { dateKey, employeeId: celebrant.employeeId, employee: celebrant._id },
-    });
-    await Notification.insertMany(recipients.map(({ _id }) => ({ ...payload, recipient: _id })), { ordered: false });
+    const data = { dateKey, employeeId: celebrant.employeeId, employee: celebrant._id };
+    const isCelebrant = (account) => account.employee?.toString() === celebrant._id.toString();
+    const ownAccount = accounts.find(isCelebrant);
+    const announced = Notification.exists({ type: 'birthday_wish', 'data.dateKey': dateKey, 'data.employeeId': celebrant.employeeId });
+    const teamWanted = !(await announced);
+    // The team check above cannot tell the two messages apart, so the birthday employee's own wish
+    // is tracked by its recipient: a broadcast that already went out must not swallow it.
+    const ownWanted = ownAccount && !(await Notification.exists({ type: 'birthday_wish', 'data.dateKey': dateKey, 'data.employeeId': celebrant.employeeId, recipient: ownAccount._id }));
+    if (!teamWanted && !ownWanted) continue;
+    const docs = [];
+    if (teamWanted) {
+      const team = fitNotification({
+        type: 'birthday_wish',
+        title: `Today is ${name}'s birthday`,
+        message: `${name} (${celebrant.employeeId}${celebrant.department ? ` · ${celebrant.department}` : ''}) has a birthday today. Wish them a great one!`,
+        data,
+      });
+      docs.push(...accounts.filter((account) => !isCelebrant(account)).map(({ _id }) => ({ ...team, recipient: _id })));
+    }
+    if (ownWanted) {
+      docs.push({
+        ...fitNotification({
+          type: 'birthday_wish',
+          title: `Happy birthday, ${celebrant.firstName}!`,
+          message: 'Wishing you a wonderful year ahead from everyone at VAM People.',
+          data,
+        }),
+        recipient: ownAccount._id,
+      });
+    }
+    await Notification.insertMany(docs, { ordered: false });
     sent += 1;
   }
   if (sent) logger.info({ dateKey, sent }, 'Birthday wishes sent to the team');
