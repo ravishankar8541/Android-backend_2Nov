@@ -1,5 +1,6 @@
 import test, { afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 
 Object.assign(process.env, {
   NODE_ENV: 'test', MONGODB_URI: 'mongodb://127.0.0.1:27017/unused-face-test',
@@ -10,17 +11,31 @@ Object.assign(process.env, {
 const { Employee } = await import('../src/models/Employee.js');
 const { FaceTemplate } = await import('../src/models/FaceTemplate.js');
 const { BiometricSession } = await import('../src/models/BiometricSession.js');
-const { encryptFaceTemplate, decryptFaceTemplate, embeddingDistance } = await import('../src/services/biometric/template-crypto.js');
+const { encryptFaceTemplate, decryptFaceTemplate, embeddingDistance, closestDistance } = await import('../src/services/biometric/template-crypto.js');
 const { saveMyFaceEnrollment, createLocalVerification, verifyAttendanceSession, consumeAttendanceSession } = await import('../src/services/biometric/local-provider.js');
 const vector = Array(192).fill(0); vector[0] = 1;
 const other = Array(192).fill(0); other[1] = 1;
+// Unit vectors at explicit angles: Euclidean distance between two of them is 2·sin(gap/2),
+// so a 66.7° gap sits exactly on the 1.1 limit the server enforces.
+const at = (degrees) => { const embedding = Array(192).fill(0); embedding[0] = Math.cos(degrees * Math.PI / 180); embedding[1] = Math.sin(degrees * Math.PI / 180); return embedding; };
+const front = at(0);
+const side = at(60);
+const averaged = at(30);
+const offCenter = at(-50);
+// Written by the code before the gallery existed: the plaintext is one bare embedding.
+const legacyTemplate = (embedding) => {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from('1'.repeat(64), 'hex'), iv);
+  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(embedding), 'utf8'), cipher.final()]);
+  return { ciphertext: ciphertext.toString('base64'), iv: iv.toString('base64'), authTag: cipher.getAuthTag().toString('base64') };
+};
 const employee = { id: 'employee-a', employmentStatus: 'active', faceEnrollmentStatus: 'enrolled', save: async () => {} };
 const query = (value) => ({ select: async () => value });
 afterEach(() => mock.restoreAll());
 
 test('encrypted face templates round-trip and reject tampering or invalid vectors', () => {
   const encrypted = encryptFaceTemplate(vector);
-  assert.deepEqual(decryptFaceTemplate(encrypted), vector);
+  assert.deepEqual(decryptFaceTemplate(encrypted), [vector]);
   assert.notEqual(encrypted.ciphertext, JSON.stringify(vector));
   const damaged = { ...encrypted, authTag: Buffer.alloc(16).toString('base64') };
   assert.throws(() => decryptFaceTemplate(damaged));
@@ -28,6 +43,20 @@ test('encrypted face templates round-trip and reject tampering or invalid vector
   assert.equal(embeddingDistance(vector, vector), 0);
   assert(embeddingDistance(vector, other) > 1.1);
   assert.equal(embeddingDistance(vector, Array(192).fill(NaN)), Infinity);
+});
+
+test('a template saved before the gallery still decrypts and matches as a one-capture gallery', () => {
+  assert.deepEqual(decryptFaceTemplate(legacyTemplate(vector)), [vector]);
+  assert.equal(closestDistance(vector, decryptFaceTemplate(legacyTemplate(vector))), 0);
+});
+
+test('the gallery matches the closest capture, so an off-centre frame passes on the front capture', () => {
+  assert(embeddingDistance(offCenter, averaged) > 1.1);
+  assert.equal(closestDistance(offCenter, [averaged]), embeddingDistance(offCenter, averaged));
+  assert(closestDistance(offCenter, [averaged, front, side]) < 1.1);
+  assert.equal(closestDistance(offCenter, [side]), embeddingDistance(offCenter, side));
+  assert.equal(closestDistance(other, []), Infinity);
+  assert.throws(() => encryptFaceTemplate([vector, other, vector, other, vector]), { code: 'INVALID_FACE_EMBEDDING' });
 });
 
 test('re-enrollment rotates the template revision and revokes older unused proofs', async () => {
@@ -68,6 +97,39 @@ test('wrong faces and malformed liveness never create verification sessions', as
   }
   await assert.rejects(createLocalVerification({ ...base, livenessPassed: false }), { code: 'LIVENESS_CHECK_FAILED' });
   assert.equal(created.length, 0);
+});
+
+function setupMatchWith(gallery) {
+  mock.method(Employee, 'findById', async () => ({ ...employee }));
+  mock.method(FaceTemplate, 'findOne', () => query({ ...encryptFaceTemplate(gallery), revision: 'revision-a' }));
+  const created = [];
+  mock.method(BiometricSession, 'create', async (value) => { created.push(value); return { ...value, id: value._id }; });
+  return created;
+}
+
+test('a gallery enrollment matches an off-centre check-in to its closest capture', async () => {
+  const created = setupMatchWith([averaged, front, side]);
+  await createLocalVerification({ employeeId: employee.id, eventType: 'IN', embedding: offCenter, livenessPassed: true, livenessScore: 0.1 });
+  assert.equal(created.length, 1);
+  assert.equal(created[0].faceDistance, closestDistance(offCenter, [averaged, front, side]));
+});
+
+test('the single averaged template an older app enrolled still refuses that same frame', async () => {
+  const created = setupMatchWith([averaged]);
+  await assert.rejects(
+    createLocalVerification({ employeeId: employee.id, eventType: 'IN', embedding: offCenter, livenessPassed: true, livenessScore: 0.1 }),
+    { code: 'FACE_MATCH_FAILED' },
+  );
+  assert.equal(created.length, 0);
+});
+
+test('enrollment stores every guided capture inside one encrypted template', async () => {
+  mock.method(Employee, 'findById', async () => ({ ...employee }));
+  let update;
+  mock.method(FaceTemplate, 'findOneAndUpdate', (_query, change) => { update = change.$set; return query({ enrolledAt: change.$set.enrolledAt }); });
+  mock.method(BiometricSession, 'deleteMany', async () => {});
+  await saveMyFaceEnrollment(employee.id, averaged, true, [front, side]);
+  assert.deepEqual(decryptFaceTemplate(update), [averaged, front, side]);
 });
 
 test('proof validation rejects another employee, wrong action, expiry, reuse and replaced enrollment', async () => {

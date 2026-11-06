@@ -8,7 +8,7 @@ export async function getEnrollment(req, res) {
 }
 
 export async function enrollFace(req, res) {
-  const data = await saveMyFaceEnrollment(req.auth.employeeId, req.body.embedding, req.body.consent);
+  const data = await saveMyFaceEnrollment(req.auth.employeeId, req.body.embedding, req.body.consent, req.body.extraEmbeddings);
   res.status(201).json({ success: true, message: 'Face enrollment saved', data });
 }
 

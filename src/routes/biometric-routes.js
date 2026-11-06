@@ -12,7 +12,11 @@ const embeddingSchema = z.array(z.number().finite().min(-1.1).max(1.1)).length(1
   const norm = Math.sqrt(embedding.reduce((sum, value) => sum + value * value, 0));
   return norm >= 0.85 && norm <= 1.15;
 }, 'Face embedding is invalid');
-const enrollSchema = z.object({ embedding: embeddingSchema, consent: z.literal(true) });
+const enrollSchema = z.object({
+  embedding: embeddingSchema,
+  consent: z.literal(true),
+  extraEmbeddings: z.array(embeddingSchema).max(3).default([]),
+});
 const verifySchema = z.object({
   eventType: z.enum(['IN', 'OUT']),
   embedding: embeddingSchema,

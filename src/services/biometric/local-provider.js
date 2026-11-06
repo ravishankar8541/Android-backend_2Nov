@@ -4,7 +4,8 @@ import { Employee } from '../../models/Employee.js';
 import { FaceTemplate } from '../../models/FaceTemplate.js';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../utils/http-error.js';
-import { decryptFaceTemplate, embeddingDistance, encryptFaceTemplate } from './template-crypto.js';
+import { logger } from '../../utils/logger.js';
+import { closestDistance, decryptFaceTemplate, encryptFaceTemplate } from './template-crypto.js';
 import { deleteEmployeePhoto, uploadAttendanceSelfie, uploadFaceCheck } from '../cloudinary.js';
 
 function requireLocalProvider() {
@@ -43,14 +44,14 @@ export async function getMyFaceEnrollment(employeeId) {
   };
 }
 
-export async function saveMyFaceEnrollment(employeeId, embedding, consent) {
+export async function saveMyFaceEnrollment(employeeId, embedding, consent, extraEmbeddings = []) {
   requireLocalProvider();
   requireEmployeeId(employeeId);
   if (consent !== true) throw new HttpError(400, 'Consent is required before face enrollment', 'FACE_CONSENT_REQUIRED');
   const employee = await Employee.findById(employeeId);
   if (!employee || employee.employmentStatus !== 'active') throw new HttpError(403, 'Your employee profile is inactive', 'EMPLOYEE_INACTIVE');
   if (employee.faceEnrollmentStatus === 'disabled') throw new HttpError(403, 'Face attendance is disabled for this employee. Contact HR.', 'FACE_ENROLLMENT_DISABLED');
-  const encrypted = encryptFaceTemplate(embedding);
+  const encrypted = encryptFaceTemplate([embedding, ...extraEmbeddings]);
   const revision = crypto.randomUUID();
   const template = await FaceTemplate.findOneAndUpdate(
     { employee: employeeId },
@@ -113,12 +114,19 @@ export async function createLocalVerification({ employeeId, eventType, embedding
   const template = await FaceTemplate.findOne({ employee: employeeId }).select('+ciphertext +iv +authTag');
   if (!template) throw new HttpError(409, 'Enroll your face before recording attendance', 'FACE_NOT_ENROLLED');
   if (livenessPassed !== true || !Number.isFinite(livenessScore) || livenessScore < 0 || livenessScore > env.BIOMETRIC_LIVENESS_MAX_SCORE) {
+    logger.warn({ employeeId, livenessScore, maxScore: env.BIOMETRIC_LIVENESS_MAX_SCORE }, 'face liveness rejected');
     throw new HttpError(403, 'Liveness check did not pass. Hold the camera steady and try again.', 'LIVENESS_CHECK_FAILED');
   }
 
-  const distance = embeddingDistance(embedding, decryptFaceTemplate(template));
+  const gallery = decryptFaceTemplate(template);
+  const distance = closestDistance(embedding, gallery);
   if (!Number.isFinite(distance) || distance > env.BIOMETRIC_FACE_DISTANCE_THRESHOLD) {
+    logger.warn({ employeeId, distance, threshold: env.BIOMETRIC_FACE_DISTANCE_THRESHOLD, gallerySize: gallery.length, livenessScore }, 'face match rejected');
     throw new HttpError(403, 'The face does not match this employee profile', 'FACE_MATCH_FAILED');
+  }
+  // Distances that pass but sit close to the limit are the ones that fail on the next bad-light day.
+  if (distance > env.BIOMETRIC_FACE_DISTANCE_THRESHOLD * 0.8) {
+    logger.info({ employeeId, distance, threshold: env.BIOMETRIC_FACE_DISTANCE_THRESHOLD, gallerySize: gallery.length }, 'face match passed narrowly');
   }
 
   const session = await BiometricSession.create({
