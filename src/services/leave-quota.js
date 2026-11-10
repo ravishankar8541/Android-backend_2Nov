@@ -20,7 +20,8 @@ function workingLeaveKeys(request, { firstKey, lastKey, weeklyOffDays, holidayKe
     if (holidayKeys.has(dateKey) || weeklyOffDays.includes(weekdayOfDateKey(dateKey))) continue;
     keys.push(dateKey);
   }
-  return { keys, days: request.halfDay ? 0.5 : keys.length };
+  const days = request.halfDay ? (keys.length ? 0.5 : 0) : keys.length;
+  return { keys, days };
 }
 
 export function allocateMonthlyLeave({ requests, quota, firstKey, lastKey, weeklyOffDays, holidayKeys }) {

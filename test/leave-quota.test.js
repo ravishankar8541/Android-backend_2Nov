@@ -58,6 +58,17 @@ test('a half day spends half the quota and pending requests only wait for review
   assert.equal(pending.paidKeys.size, 0);
 });
 
+test('half-day requests on weekly offs or holidays do not consume quota', () => {
+  const weekendHalf = allocate([request('2026-09-06', '2026-09-06', 'approved', true)], 2);
+  assert.equal(weekendHalf.used, 0);
+  assert.equal(weekendHalf.paidKeys.size, 0);
+  assert.equal(weekendHalf.halfPaidKeys.size, 0);
+  const holidayHalf = allocate([request('2026-09-08', '2026-09-08', 'approved', true)], 2, { holidayKeys: new Set(['2026-09-08']) });
+  assert.equal(holidayHalf.used, 0);
+  assert.equal(holidayHalf.paidKeys.size, 0);
+  assert.equal(holidayHalf.halfPaidKeys.size, 0);
+});
+
 test('leave dated outside the month is counted only for the days it covers inside it', () => {
   const summary = allocate([request('2026-08-28', '2026-09-02')], 2);
   assert.deepEqual([...summary.paidKeys].sort(), ['2026-09-01', '2026-09-02']);
