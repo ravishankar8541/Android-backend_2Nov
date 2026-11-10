@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { createEmployee, deleteEmployee, getEmployee, listEmployees, listFaceChecks, resetEmployeePassword, reviewFaceCheck, updateEmployee, uploadEmployeePhoto } from '../controllers/employee-controller.js';
 import { allowRoles, requireAuth } from '../middleware/auth.js';
-import { ADMIN_ROLES, MANAGER_ROLES } from '../constants/roles.js';
+import { ADMIN_ROLES, MANAGER_ROLES, ROLES } from '../constants/roles.js';
 import { validate } from '../middleware/validate.js';
 import { employeePhotoUpload } from '../middleware/employee-photo-upload.js';
 import { EMPLOYEE_PHOTO_FOLDER } from '../services/cloudinary.js';
@@ -63,6 +63,7 @@ const updateSchema = z.object({
   shift: z.string().nullable().optional(),
   salary: salarySchema.optional(),
   employmentStatus: z.enum(['active', 'inactive']).optional(),
+  role: z.enum(Object.values(ROLES)).optional(),
   faceEnrollmentStatus: z.enum(['not_enrolled', 'pending', 'enrolled', 'disabled']).optional(),
   attendanceVerification: z.enum(['face', 'selfie']).optional(),
 }).refine((body) => Object.keys(body).length > 0, 'Provide at least one field to update');

@@ -2,7 +2,7 @@ import { Employee } from '../models/Employee.js';
 import { User } from '../models/User.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { HttpError } from '../utils/http-error.js';
-import { ROLES, canManageAccount } from '../constants/roles.js';
+import { ADMIN_ROLES, ROLES, canManageAccount } from '../constants/roles.js';
 import { Attendance } from '../models/Attendance.js';
 import { AttendanceRegularization } from '../models/AttendanceRegularization.js';
 import { FaceTemplate } from '../models/FaceTemplate.js';
@@ -80,6 +80,17 @@ export async function uploadEmployeePhoto(req, res) {
 export async function updateEmployee(req, res) {
   const employee = await Employee.findById(req.params.id);
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
+  let account = null;
+  if (req.body.role !== undefined) {
+    account = await User.findOne({ employee: employee.id }).select('role');
+    if (!account) throw new HttpError(409, 'This employee does not have a sign-in account yet', 'ACCOUNT_NOT_FOUND');
+    if (account.role !== req.body.role) {
+      if (account.id === req.auth.userId) throw new HttpError(400, 'You cannot change the role of your own sign-in account', 'ACCOUNT_ROLE_SELF');
+      if (!canManageAccount(req.auth.role, account.role) || !canManageAccount(req.auth.role, req.body.role)) {
+        throw new HttpError(403, 'You can only move an account between roles below your own', 'ACCOUNT_RANK_TOO_HIGH');
+      }
+    }
+  }
   const previousPhotoPublicId = employee.photoPublicId;
   const allowed = ['firstName', 'lastName', 'phone', 'department', 'designation', 'joiningDate', 'dateOfBirth', 'photoUrl', 'photoPublicId', 'manager', 'office', 'shift', 'employmentStatus', 'faceEnrollmentStatus', 'attendanceVerification'];
   for (const key of allowed) if (req.body[key] !== undefined) employee[key] = req.body[key];
@@ -96,12 +107,17 @@ export async function updateEmployee(req, res) {
   if (req.body.employmentStatus !== undefined) {
     await User.updateOne({ employee: employee.id }, { $set: { active: employee.employmentStatus === 'active' } });
   }
+  const roleChanged = account && account.role !== req.body.role ? { from: account.role, to: req.body.role } : null;
+  if (roleChanged) await User.updateOne({ _id: account.id }, { $set: { role: roleChanged.to } });
   await AuditLog.create({
     actor: req.auth.userId,
     action: 'employee.updated',
     entityType: 'Employee',
     entityId: employee.id,
-    metadata: req.body.salary ? { salaryFields: Object.keys(req.body.salary) } : {},
+    metadata: {
+      ...(req.body.salary ? { salaryFields: Object.keys(req.body.salary) } : {}),
+      ...(roleChanged ? { roleChange: roleChanged } : {}),
+    },
     ipAddress: req.ip,
   });
   if (req.body.dateOfBirth) announceBirthdayNow();
@@ -161,7 +177,8 @@ export async function getEmployee(req, res) {
   const employee = await employeeQuery;
   if (!employee) throw new HttpError(404, 'Employee not found', 'EMPLOYEE_NOT_FOUND');
   if (req.auth.role === 'manager' && (!req.auth.employeeId || employee.manager?.id !== req.auth.employeeId)) throw new HttpError(403, 'You can only view your direct team', 'FORBIDDEN');
-  res.json({ success: true, message: 'Employee profile', data: { employee } });
+  const account = ADMIN_ROLES.includes(req.auth.role) ? await User.findOne({ employee: employee.id }).select('role') : null;
+  res.json({ success: true, message: 'Employee profile', data: { employee, accountRole: account?.role ?? null } });
 }
 
 export async function listFaceChecks(req, res) {
